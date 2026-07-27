@@ -12,12 +12,12 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "pan-search"
-database_id = "00000000-0000-0000-0000-000000000001"
+database_id = "1e50c5b9-e8df-4859-ba26-a416481c5792"
 migrations_dir = "drizzle/migrations"
 
 [[kv_namespaces]]
 binding = "KV"
-id = "00000000-0000-0000-0000-000000000002"
+id = "cd00ed5ada1b4c0d915fe04d7b810225"
 
 [[r2_buckets]]
 binding = "R2"
@@ -38,8 +38,8 @@ crons = ["*/10 * * * *", "0 */12 * * *", "0 3 * * *"]
 [vars]
 APP_NAME = "PanSearch"
 SYSTEM_SALT = "qfshop"
-ENCRYPT_KEY = "ABCD"
-ENCRYPT_IV = "1234567890123456"
+ENCRYPT_KEY = "verveu0v87e80ru0ev0euv3f2f3"
+ENCRYPT_IV = "k1h2i3o4b5b6o7b8"
 
 # Secrets (set via: wrangler secret put ...):
 # ADMIN_BOOTSTRAP_PASSWORD
