@@ -39,6 +39,7 @@ export async function httpJson(
     }
     finalUrl += (finalUrl.includes('?') ? '&' : '?') + qs.toString();
   }
+  const method = (options.method || 'GET').toUpperCase();
   const headers: Record<string, string> = {
     Accept: 'application/json, text/plain, */*',
     'User-Agent':
@@ -47,7 +48,8 @@ export async function httpJson(
   };
   if (options.cookie) headers.Cookie = options.cookie;
   let body: string | undefined;
-  if (options.body !== undefined) {
+  // Workers/fetch：GET/HEAD 不能带 body，否则直接抛 TypeError → 500 Internal Server Error
+  if (options.body !== undefined && method !== 'GET' && method !== 'HEAD') {
     if (typeof options.body === 'string') {
       body = options.body;
     } else {
@@ -55,7 +57,7 @@ export async function httpJson(
       headers['Content-Type'] = headers['Content-Type'] || 'application/json;charset=UTF-8';
     }
   }
-  const res = await fetch(finalUrl, { method: options.method || 'GET', headers, body });
+  const res = await fetch(finalUrl, { method, headers, body });
   const text = await res.text();
   let data: any = null;
   try {

@@ -191,12 +191,8 @@ export async function streamWebSearch(
         controller.close();
         return;
       }
-      const lines = await env.DB.prepare(
-        'SELECT * FROM api_list WHERE status = 1 AND pantype = ? ORDER BY weight DESC'
-      )
-        .bind(isType)
-        .all<any>();
-      const list = lines.results || [];
+      const { getCachedApiList } = await import('./cache');
+      const list = await getCachedApiList(env, isType);
       if (!list.length) {
         send('data: [DONE] 暂无可用线路\n\n');
         controller.close();

@@ -98,7 +98,10 @@ export async function getSourceDetail(env: Env, id: number) {
     .bind(id)
     .first<any>();
   if (!row) return null;
-  await env.DB.prepare('UPDATE source SET page_views = page_views + 1 WHERE source_id = ?').bind(id).run();
+  // 浏览量：约 10% 概率回写，降低详情页 D1 写放大
+  if (Math.random() < 0.1) {
+    await env.DB.prepare('UPDATE source SET page_views = page_views + 1 WHERE source_id = ?').bind(id).run();
+  }
   row.times = row.time ? new Date(row.time * 1000).toISOString().slice(0, 10) : '';
   delete row.time;
   return row;
@@ -154,11 +157,10 @@ export async function findDuplicate(env: Env, title: string, isType: number) {
 
 /** 侧栏热榜：对齐原版 hotList（KV ranking + 分类图） */
 export async function getHotList(env: Env, limit = 5) {
-  const cats = await env.DB.prepare(
-    'SELECT source_category_id, name, image, is_sys FROM source_category WHERE status = 0 AND is_sys = 1 ORDER BY sort DESC'
-  ).all<any>();
+  const { getCachedCategories } = await import('./cache');
+  const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0 && Number(c.is_sys) === 1);
   const hotList: { name: string; image: string; list: any[] }[] = [];
-  for (const cat of cats.results || []) {
+  for (const cat of cats) {
     let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
     if (!list?.length) {
       const local = await env.DB.prepare(

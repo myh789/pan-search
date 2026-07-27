@@ -26,6 +26,8 @@ export async function processTransferJob(env: Env, job: TransferJob) {
         is_time: job.expiredType === 2 ? 1 : 0,
         source_category_id: job.categoryId || 0,
       });
+      const { onSourceMutated } = await import('../services/cache');
+      await onSourceMutated(env, 1);
     }
     return res;
   }
@@ -75,6 +77,10 @@ export async function processTransferJob(env: Env, job: TransferJob) {
       )
         .bind(newNum, skipNum, failNum, fails.slice(0, 5).join(';'), nowSec(), nowSec(), logId)
         .run();
+    }
+    if (newNum > 0) {
+      const { onSourceMutated } = await import('../services/cache');
+      await onSourceMutated(env, newNum);
     }
     return { code: 200, message: 'batch done', data: { newNum, skipNum, failNum } };
   }

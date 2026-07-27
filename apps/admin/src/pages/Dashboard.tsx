@@ -2,22 +2,33 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, getToken } from '../api/client';
 
+const ADMIN_NAME_KEY = 'ps_admin_name';
+
 export function Dashboard() {
-  const [info, setInfo] = useState<any>(null);
+  const [name, setName] = useState(() => localStorage.getItem(ADMIN_NAME_KEY) || '管理员');
   const [stats, setStats] = useState({ sources: 0, lines: 0, feedback: 0 });
 
   useEffect(() => {
     (async () => {
-      const me = await api.get('/admin/admin/getMyInfo');
-      setInfo(me.data);
-      const s = await api.get('/admin/source/getList?page=1&page_size=1');
-      const a = await api.get('/admin/api_list/getList');
-      const f = await api.get('/admin/feedback/getList?page=1&page_size=1');
-      setStats({
-        sources: s.data?.total || 0,
-        lines: a.data?.items?.length || 0,
-        feedback: f.data?.total || f.data?.items?.length || 0,
-      });
+      // 单次 KV 缓存统计，不再打三次列表 COUNT
+      const j = await api.get('/admin/system/stats');
+      if (j.code === 200 && j.data) {
+        setStats({
+          sources: j.data.sources || 0,
+          lines: j.data.lines || 0,
+          feedback: j.data.feedback || 0,
+        });
+      }
+      const cached = localStorage.getItem(ADMIN_NAME_KEY);
+      if (cached) setName(cached);
+      else {
+        const me = await api.get('/admin/admin/getMyInfo');
+        const n = me.data?.admin_name || me.data?.admin_account;
+        if (n) {
+          localStorage.setItem(ADMIN_NAME_KEY, n);
+          setName(n);
+        }
+      }
     })();
   }, []);
 
@@ -26,9 +37,7 @@ export function Dashboard() {
       <div className="home-hero">
         <div className="home-logo">PS</div>
         <p className="home-brand">@资源管理系统</p>
-        <p className="muted">
-          欢迎，{info?.admin_name || info?.admin_account || '管理员'}
-        </p>
+        <p className="muted">欢迎，{name}</p>
       </div>
 
       <div className="row home-stats">

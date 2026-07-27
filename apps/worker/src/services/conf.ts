@@ -14,7 +14,7 @@ export async function getConf(env: Env, force = false): Promise<Record<string, s
   }>();
   const map: Record<string, string> = {};
   for (const r of rows.results || []) map[r.conf_key] = r.conf_value ?? '';
-  await env.KV.put(CONF_CACHE_KEY, JSON.stringify(map), { expirationTtl: 300 });
+  await env.KV.put(CONF_CACHE_KEY, JSON.stringify(map), { expirationTtl: 1800 });
   return map;
 }
 

@@ -35,6 +35,9 @@ export function Login() {
       return;
     }
     setToken(j.data.access_token);
+    if (j.data.admin_name || j.data.admin_account) {
+      localStorage.setItem('ps_admin_name', j.data.admin_name || j.data.admin_account);
+    }
     nav('/');
   };
 

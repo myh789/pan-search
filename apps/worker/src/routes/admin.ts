@@ -8,12 +8,22 @@ import {
   resolveAccess,
   getMenuForAdmin,
   assertNodeAccess,
+  revokeAccess,
 } from '../services/auth';
 import { getConf, setConf, invalidateConf } from '../services/conf';
 import { encodePassword, nowSec, randString } from '../utils';
 import { createPan } from '../pan';
 import { createSourceLog } from '../queue/transfer';
 import { insertSource } from '../services/source';
+import {
+  bumpAdminStats,
+  getAdminStats,
+  getCachedApiList,
+  getCachedCategories,
+  invalidateApiListCache,
+  invalidateCategories,
+  onSourceMutated,
+} from '../services/cache';
 
 export const adminRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -61,19 +71,28 @@ adminRoutes.post('/admin/login', async (c) => {
 
 adminRoutes.post('/admin/logout', async (c) => {
   const token = c.req.header('access_token') || '';
-  await c.env.DB.prepare('UPDATE access SET access_status = 1 WHERE access_token = ?').bind(token).run();
+  await revokeAccess(c.env, token);
   return c.json(jok('已退出'));
 });
 
 adminRoutes.get('/admin/getMyInfo', async (c) => {
   const id = c.get('adminId');
+  const withMenu = c.req.query('with_menu') === '1';
   const row = await c.env.DB.prepare(
     'SELECT admin_id, admin_account, admin_name, admin_truename, admin_email, admin_idcard, admin_group FROM admin WHERE admin_id = ?'
   )
     .bind(id)
     .first();
+  if (!withMenu) return c.json(jok('ok', row));
   const menu = await getMenuForAdmin(c.env, c.get('adminGroup') || 0);
   return c.json(jok('ok', { ...row, menu }));
+});
+
+/** 概况页统计：KV 缓存，不走三次列表 COUNT */
+adminRoutes.get('/system/stats', async (c) => {
+  const force = c.req.query('force') === '1';
+  const stats = await getAdminStats(c.env, force);
+  return c.json(jok('ok', stats));
 });
 
 adminRoutes.post('/admin/updateMyInfo', async (c) => {
@@ -137,10 +156,20 @@ adminRoutes.post('/conf/updateBaseConfig', async (c) => {
   } else {
     body = (await c.req.parseBody()) as Record<string, any>;
   }
+  let touchAli = false;
+  let touchXunlei = false;
   for (const [k, v] of Object.entries(body)) {
     if (['access_token', 'plat', 'version'].includes(k)) continue;
     await setConf(c.env, k, String(v ?? ''));
+    if (k === 'Authorization' || k === 'ali_drive_id') touchAli = true;
+    if (k === 'xunlei_cookie') touchXunlei = true;
   }
+  // Token 变更后清掉网盘 access_token 缓存，避免沿用旧凭证
+  if (touchAli) {
+    await c.env.KV.delete('aliyun:token');
+    await c.env.KV.delete('aliyun:access_token');
+  }
+  if (touchXunlei) await c.env.KV.delete('xunlei:access_token');
   return c.json(jok('保存成功'));
 });
 
@@ -150,6 +179,9 @@ adminRoutes.post('/system/clean', async (c) => {
   for (const k of list.keys) await c.env.KV.delete(k.name);
   await c.env.KV.delete('site:conf');
   await c.env.KV.delete('sitemap:xml');
+  await invalidateCategories(c.env);
+  await invalidateApiListCache(c.env);
+  await onSourceMutated(c.env, 0);
   return c.json(jok('清理完成'));
 });
 
@@ -201,6 +233,7 @@ adminRoutes.post('/source/add', async (c) => {
     vod_content: String(body.vod_content || ''),
     status: Number(body.status ?? 1),
   });
+  await onSourceMutated(c.env, 1);
   return c.json(jok('添加成功', { source_id: id }));
 });
 
@@ -236,6 +269,7 @@ adminRoutes.post('/source/delete', async (c) => {
   for (const id of ids) {
     await c.env.DB.prepare('UPDATE source SET is_delete = 1, update_time = ? WHERE source_id = ?').bind(nowSec(), id).run();
   }
+  await onSourceMutated(c.env, -ids.length);
   return c.json(jok('删除成功'));
 });
 
@@ -305,13 +339,38 @@ adminRoutes.post('/source/imports', async (c) => {
 });
 
 adminRoutes.get('/source/getFiles', async (c) => {
-  const conf = await getConf(c.env);
-  const type = Number(c.req.query('type') || 0);
-  const pdir = c.req.query('pdir_fid') || 0;
-  const pan = createPan(type, conf, { url: '' }, c.env);
-  const res = await pan.getFiles(pdir === '0' ? 0 : pdir);
-  if (res.code !== 200) return c.json(jerr(res.message));
-  return c.json(jok('获取成功', (res as any).data));
+  try {
+    // 账号检测/目录浏览：强制读最新 conf，避免刚保存 Cookie 仍命中旧 KV
+    const conf = await getConf(c.env, true);
+    const type = Number(c.req.query('type') || 0);
+    const pdirRaw = c.req.query('pdir_fid');
+    const pdir =
+      pdirRaw === undefined || pdirRaw === null || pdirRaw === '' || pdirRaw === '0' || pdirRaw === 'root'
+        ? type === 1
+          ? 'root'
+          : 0
+        : pdirRaw;
+    const pan = createPan(type, conf, { url: '' }, c.env);
+    const res = await pan.getFiles(pdir);
+    if (res.code !== 200) return c.json(jerr(res.message || '获取失败'));
+    const list = Array.isArray((res as any).data) ? (res as any).data : [];
+    // 统一字段，方便前台列表渲染
+    const normalized = list.map((f: any) => ({
+      ...f,
+      _name: f.file_name || f.server_filename || f.name || f.title || '-',
+      _id: String(f.fid || f.file_id || f.fs_id || f.id || f.path || ''),
+      _is_dir:
+        f.dir === true ||
+        f.isdir === 1 ||
+        f.isdir === '1' ||
+        f.file_type === 0 ||
+        f.kind === 'drive#folder' ||
+        f.type === 'folder',
+    }));
+    return c.json(jok('获取成功', normalized));
+  } catch (e: any) {
+    return c.json(jerr(e?.message || '账号检测失败，请检查 Cookie/Token'));
+  }
 });
 
 adminRoutes.post('/source/transferAll', async (c) => {
@@ -323,8 +382,8 @@ adminRoutes.post('/source/transferAll', async (c) => {
 
 // category
 adminRoutes.get('/source_category/getList', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT * FROM source_category ORDER BY sort DESC').all();
-  return c.json(jok('ok', { items: rows.results || [] }));
+  const rows = await getCachedCategories(c.env);
+  return c.json(jok('ok', { items: rows }));
 });
 
 adminRoutes.post('/source_category/add', async (c) => {
@@ -344,6 +403,7 @@ adminRoutes.post('/source_category/add', async (c) => {
       t
     )
     .run();
+  await invalidateCategories(c.env);
   return c.json(jok('添加成功'));
 });
 
@@ -363,6 +423,7 @@ adminRoutes.post('/source_category/update', async (c) => {
       Number(body.source_category_id)
     )
     .run();
+  await invalidateCategories(c.env);
   return c.json(jok('更新成功'));
 });
 
@@ -372,6 +433,7 @@ adminRoutes.post('/source_category/delete', async (c) => {
   const row = await c.env.DB.prepare('SELECT is_sys FROM source_category WHERE source_category_id = ?').bind(id).first<any>();
   if (row?.is_sys === 1) return c.json(jerr('系统分类不可删除'));
   await c.env.DB.prepare('DELETE FROM source_category WHERE source_category_id = ?').bind(id).run();
+  await invalidateCategories(c.env);
   return c.json(jok('删除成功'));
 });
 
@@ -382,13 +444,14 @@ adminRoutes.post('/source_category/setStatus', async (c) => {
   await c.env.DB.prepare(`UPDATE source_category SET ${field} = ?, update_time = ? WHERE source_category_id = ?`)
     .bind(Number(body.value), nowSec(), Number(body.source_category_id))
     .run();
+  await invalidateCategories(c.env);
   return c.json(jok('ok'));
 });
 
 // api_list
 adminRoutes.get('/api_list/getList', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT * FROM api_list ORDER BY weight DESC, id DESC').all();
-  return c.json(jok('ok', { items: rows.results || [] }));
+  const rows = await getCachedApiList(c.env);
+  return c.json(jok('ok', { items: rows }));
 });
 
 adminRoutes.post('/api_list/add', async (c) => {
@@ -419,6 +482,8 @@ adminRoutes.post('/api_list/add', async (c) => {
       t
     )
     .run();
+  await invalidateApiListCache(c.env);
+  await bumpAdminStats(c.env, { lines: 1 });
   return c.json(jok('添加成功'));
 });
 
@@ -448,24 +513,29 @@ adminRoutes.post('/api_list/update', async (c) => {
       Number(body.id)
     )
     .run();
+  await invalidateApiListCache(c.env);
   return c.json(jok('更新成功'));
 });
 
 adminRoutes.post('/api_list/delete', async (c) => {
   const body = await c.req.parseBody();
   await c.env.DB.prepare('DELETE FROM api_list WHERE id = ?').bind(Number(body.id)).run();
+  await invalidateApiListCache(c.env);
+  await bumpAdminStats(c.env, { lines: -1 });
   return c.json(jok('删除成功'));
 });
 
 adminRoutes.post('/api_list/enable', async (c) => {
   const body = await c.req.parseBody();
   await c.env.DB.prepare('UPDATE api_list SET status = 1 WHERE id = ?').bind(Number(body.id)).run();
+  await invalidateApiListCache(c.env);
   return c.json(jok('ok'));
 });
 
 adminRoutes.post('/api_list/disable', async (c) => {
   const body = await c.req.parseBody();
   await c.env.DB.prepare('UPDATE api_list SET status = 0 WHERE id = ?').bind(Number(body.id)).run();
+  await invalidateApiListCache(c.env);
   return c.json(jok('ok'));
 });
 
@@ -491,11 +561,12 @@ adminRoutes.post('/source_log/delete', async (c) => {
 adminRoutes.get('/feedback/getList', async (c) => {
   const page = Number(c.req.query('page') || 1);
   const pageSize = Number(c.req.query('page_size') || 50);
-  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM feedback').first<{ c: number }>();
+  // total 走概况统计缓存，避免每次列表再 COUNT
+  const stats = await getAdminStats(c.env);
   const rows = await c.env.DB.prepare('SELECT * FROM feedback ORDER BY id DESC LIMIT ? OFFSET ?')
     .bind(pageSize, (page - 1) * pageSize)
     .all();
-  return c.json(jok('ok', { items: rows.results || [], total: total?.c || 0, page, page_size: pageSize }));
+  return c.json(jok('ok', { items: rows.results || [], total: stats.feedback, page, page_size: pageSize }));
 });
 
 adminRoutes.post('/feedback/delete', async (c) => {
@@ -508,6 +579,7 @@ adminRoutes.post('/feedback/delete', async (c) => {
   for (const id of ids) {
     await c.env.DB.prepare('DELETE FROM feedback WHERE id = ?').bind(id).run();
   }
+  await bumpAdminStats(c.env, { feedback: -ids.length });
   return c.json(jok('删除成功'));
 });
 

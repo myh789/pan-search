@@ -27,10 +27,12 @@ async function quarkApi(
   body?: any,
   query?: Record<string, any>
 ) {
+  const m = method.toUpperCase();
   const res = await httpJson(url, {
-    method,
+    method: m,
     headers: quarkHeaders(cookie),
-    body: body ?? {},
+    // GET 不传 body，避免 Workers 抛错
+    body: m === 'GET' || m === 'HEAD' ? undefined : body ?? {},
     query,
     cookie,
   });
@@ -46,24 +48,31 @@ export class QuarkPan implements PanAdapter {
   async getFiles(pdirFid: string | number = 0) {
     const cookie = this.conf.quark_cookie || '';
     if (!cookie) return { code: 500, message: '未配置夸克Cookie' };
-    const data = await quarkApi(cookie, 'https://drive-pc.quark.cn/1/clouddrive/file/sort', 'GET', {}, {
-      pr: 'ucpro',
-      fr: 'pc',
-      uc_param_str: '',
-      pdir_fid: pdirFid,
-      _page: 1,
-      _size: 50,
-      _fetch_total: 1,
-      _fetch_sub_dirs: 0,
-      _sort: 'file_type:asc,updated_at:desc',
-    });
-    if (data?.status !== 200) {
-      return {
-        code: 500,
-        message: data?.message === 'require login [guest]' ? '夸克未登录，请检查cookie' : data?.message || '获取失败',
-      };
+    try {
+      const data = await quarkApi(cookie, 'https://drive-pc.quark.cn/1/clouddrive/file/sort', 'GET', undefined, {
+        pr: 'ucpro',
+        fr: 'pc',
+        uc_param_str: '',
+        pdir_fid: pdirFid === 'root' ? 0 : pdirFid,
+        _page: 1,
+        _size: 50,
+        _fetch_total: 1,
+        _fetch_sub_dirs: 0,
+        _sort: 'file_type:asc,updated_at:desc',
+      });
+      if (!data || typeof data !== 'object') {
+        return { code: 500, message: '夸克接口无响应，请检查 Cookie 或网络' };
+      }
+      if (data?.status !== 200) {
+        return {
+          code: 500,
+          message: data?.message === 'require login [guest]' ? '夸克未登录，请检查cookie' : data?.message || '获取失败',
+        };
+      }
+      return { code: 200, message: '获取成功', data: data.data?.list || [] } as any;
+    } catch (e: any) {
+      return { code: 500, message: e?.message || '夸克目录获取失败' };
     }
-    return { code: 200, message: '获取成功', data: data.data.list } as any;
   }
 
   private async getPdirFid(pdirFid: string) {
@@ -293,30 +302,37 @@ export class UcPan implements PanAdapter {
   async getFiles(pdirFid: string | number = 0) {
     const cookie = this._conf.uc_cookie || '';
     if (!cookie) return { code: 500, message: '未配置UC Cookie' };
-    const data = await httpJson('https://pc-api.uc.cn/1/clouddrive/file/sort', {
-      method: 'GET',
-      headers: this.headers(),
-      cookie,
-      query: {
-        pr: 'UCBrowser',
-        fr: 'pc',
-        pdir_fid: String(pdirFid),
-        _page: 1,
-        _size: 50,
-        _fetch_total: 1,
-        _fetch_sub_dirs: 0,
-        _sort: 'file_type:asc,updated_at:desc',
-      },
-      body: {},
-    });
-    if (data.data?.status !== 200) {
-      return {
-        code: 500,
-        message:
-          data.data?.message === 'require login [guest]' ? 'UC未登录，请检查cookie' : data.data?.message || '失败',
-      };
+    try {
+      const data = await httpJson('https://pc-api.uc.cn/1/clouddrive/file/sort', {
+        method: 'GET',
+        headers: this.headers(),
+        cookie,
+        query: {
+          pr: 'UCBrowser',
+          fr: 'pc',
+          pdir_fid: String(pdirFid === 'root' ? 0 : pdirFid),
+          _page: 1,
+          _size: 50,
+          _fetch_total: 1,
+          _fetch_sub_dirs: 0,
+          _sort: 'file_type:asc,updated_at:desc',
+        },
+      });
+      const payload = data.data;
+      if (!payload || typeof payload !== 'object') {
+        return { code: 500, message: 'UC 接口无响应，请检查 Cookie 或网络' };
+      }
+      if (payload.status !== 200) {
+        return {
+          code: 500,
+          message:
+            payload.message === 'require login [guest]' ? 'UC未登录，请检查cookie' : payload.message || '失败',
+        };
+      }
+      return { code: 200, message: '获取成功', data: payload.data?.list || [] } as any;
+    } catch (e: any) {
+      return { code: 500, message: e?.message || 'UC 目录获取失败' };
     }
-    return { code: 200, message: '获取成功', data: data.data.data.list } as any;
   }
 
   async deletepdirFid(filelist: string[]) {
@@ -493,13 +509,28 @@ export class XunleiPan implements PanAdapter {
 
   async getFiles(pdirFid: string | number = '') {
     const token = await this.getAccessToken();
-    if (!token) return { code: 500, message: '迅雷未登录' };
-    const res = await httpJson('https://api-pan.xunlei.com/drive/v1/files', {
-      method: 'GET',
-      headers: this.headers(token),
-      query: { parent_id: String(pdirFid || ''), limit: 100 },
-    });
-    return { code: 200, message: '获取成功', data: res.data?.files || res.data?.data || [] } as any;
+    if (!token) return { code: 500, message: '迅雷未登录，请检查 refresh_token(xunlei_cookie)' };
+    try {
+      const parent =
+        pdirFid === 0 || pdirFid === '0' || pdirFid === 'root' || pdirFid === '' || pdirFid == null
+          ? ''
+          : String(pdirFid);
+      const res = await httpJson('https://api-pan.xunlei.com/drive/v1/files', {
+        method: 'GET',
+        headers: this.headers(token),
+        query: { parent_id: parent, limit: 100 },
+      });
+      if (res.status >= 400 || res.data?.error || res.data?.error_code) {
+        return {
+          code: 500,
+          message: res.data?.error_description || res.data?.message || res.data?.error || `迅雷接口错误(${res.status})`,
+        };
+      }
+      const list = res.data?.files || res.data?.data?.files || res.data?.data || [];
+      return { code: 200, message: '获取成功', data: Array.isArray(list) ? list : [] } as any;
+    } catch (e: any) {
+      return { code: 500, message: e?.message || '迅雷目录获取失败' };
+    }
   }
 
   async deletepdirFid(filelist: string[]) {

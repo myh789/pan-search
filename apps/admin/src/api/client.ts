@@ -28,7 +28,13 @@ async function req(path: string, options: RequestInit & { form?: Record<string, 
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
   }
   const res = await fetch(path, { ...options, headers, body });
-  const json = await res.json();
+  const text = await res.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return { code: res.status || 500, message: text.slice(0, 200) || '服务器返回非 JSON' };
+  }
   if (json.code === 401) {
     clearToken();
     location.href = '/qfadmin/login';

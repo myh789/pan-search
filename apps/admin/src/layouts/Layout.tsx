@@ -58,13 +58,20 @@ const TOP: TopItem[] = [
 export function Layout() {
   const loc = useLocation();
   const nav = useNavigate();
-  const [name, setName] = useState('管理员');
+  const [name, setName] = useState(() => localStorage.getItem('ps_admin_name') || '管理员');
   const [userOpen, setUserOpen] = useState(false);
 
   useEffect(() => {
+    const cached = localStorage.getItem('ps_admin_name');
+    if (cached) {
+      setName(cached);
+      return;
+    }
     api.get('/admin/admin/getMyInfo').then((j) => {
       if (j.data?.admin_name || j.data?.admin_account) {
-        setName(j.data.admin_name || j.data.admin_account);
+        const n = j.data.admin_name || j.data.admin_account;
+        localStorage.setItem('ps_admin_name', n);
+        setName(n);
       }
     });
   }, []);
@@ -79,6 +86,7 @@ export function Layout() {
       /* ignore */
     }
     clearToken();
+    localStorage.removeItem('ps_admin_name');
     location.href = '/qfadmin/login';
   };
 

@@ -4,6 +4,7 @@ import type { Env, AppVariables } from './env';
 import { apiRoutes } from './routes/api';
 import { adminRoutes } from './routes/admin';
 import { wechatRoutes } from './routes/wechat';
+import { getCachedPanTabs } from './services/cache';
 import { ensureBootstrapAdmin, getConf } from './services/conf';
 import { getSourceList, getSourceDetail } from './services/source';
 import {
@@ -118,25 +119,12 @@ async function handleSearch(c: any, slug: string) {
     search_type: 1,
     is_time: 1,
   });
-  const categories = (
-    await c.env.DB.prepare(
-      'SELECT source_category_id, name FROM source_category WHERE status = 0 ORDER BY sort DESC'
-    ).all<any>()
-  ).results || [];
+  const { getCachedCategories } = await import('./services/cache');
+  const categories = (await getCachedCategories(c.env))
+    .filter((c: any) => Number(c.status) === 0)
+    .map((c: any) => ({ source_category_id: c.source_category_id, name: c.name }));
 
-  const lines = (
-    await c.env.DB.prepare(
-      'SELECT DISTINCT pantype FROM api_list WHERE status = 1 ORDER BY pantype ASC'
-    ).all<{ pantype: number }>()
-  ).results || [];
-  const panMap: Record<number, string> = { 0: '夸克', 1: '阿里', 2: '百度', 3: 'UC', 4: '迅雷' };
-  let panTabs = lines
-    .filter((l) => panMap[l.pantype] !== undefined)
-    .map((l) => ({ type: l.pantype, name: panMap[l.pantype] }));
-  if (!panTabs.length) panTabs = [{ type: 0, name: '夸克' }];
-
-  // If no lines configured, treat 全网搜 as off for UI
-  if (!lines.length) conf.is_quan = conf.is_quan === '1' ? '1' : '0';
+  const panTabs = await getCachedPanTabs(c.env);
 
   return c.html(await renderList(c.env, conf, name, page, cate, list, categories, panTabs));
 }

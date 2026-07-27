@@ -350,21 +350,16 @@ ${opts.extraScript || ''}
 }
 
 export async function renderHome(env: Env, conf: Record<string, string>) {
-  const cats = await env.DB.prepare(
-    'SELECT source_category_id, name, image, is_sys, is_type FROM source_category WHERE status = 0 ORDER BY sort DESC'
-  ).all<any>();
+  const { getCachedCategories, getCachedHomeLatest } = await import('../services/cache');
+  const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
   const limit = Number(conf.ranking_num) || 10;
   const mLimit = Number(conf.ranking_m_num) || 6;
   const withImg = conf.ranking_type === '1';
 
   let newBlock = '';
   if (conf.home_new === '0') {
-    const news = await env.DB.prepare(
-      `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 ORDER BY create_time DESC LIMIT ?`
-    )
-      .bind(limit)
-      .all<any>();
-    const items = (news.results || [])
+    const news = await getCachedHomeLatest(env, limit);
+    const items = (news || [])
       .map((x: any, i: number) => {
         if (withImg) {
           return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><div class="img"><span class="titleLoading">${esc(
@@ -383,7 +378,7 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   const blocks: string[] = [];
   const rankList: { name: string; is_sys: number }[] = [];
-  for (const cat of cats.results || []) {
+  for (const cat of cats) {
     rankList.push({ name: cat.name, is_sys: Number(cat.is_sys) });
     let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
     if (!list?.length) {

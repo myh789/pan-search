@@ -78,6 +78,8 @@ apiRoutes.post('/tool/feedback', async (c) => {
   await c.env.DB.prepare('INSERT INTO feedback (content, create_time, update_time) VALUES (?, ?, ?)')
     .bind(content, nowSec(), nowSec())
     .run();
+  const { bumpAdminStats } = await import('../services/cache');
+  await bumpAdminStats(c.env, { feedback: 1 });
   return c.json(jok('提交成功'));
 });
 
@@ -129,6 +131,8 @@ apiRoutes.post('/other/save_url', async (c) => {
     fid: typeof res.data.fid === 'string' ? res.data.fid : JSON.stringify(res.data.fid || ''),
     is_time: 1,
   });
+  const { onSourceMutated } = await import('../services/cache');
+  await onSourceMutated(c.env, 1);
   return c.json(jok('临时资源获取成功', { id, ...res.data }));
 });
 
@@ -143,11 +147,11 @@ apiRoutes.get('/other/all_search', async (c) => {
   const cached = await c.env.KV.get(cacheKey, 'json');
   if (cached) return c.json(jok('临时资源获取成功', cached));
 
-  const lines = await c.env.DB.prepare('SELECT * FROM api_list WHERE status = 1 AND pantype = 0 ORDER BY weight DESC')
-    .all<any>();
+  const { getCachedApiList, onSourceMutated } = await import('../services/cache');
+  const lines = await getCachedApiList(c.env, 0);
   const { runLine } = await import('../services/search-lines');
   const out: any[] = [];
-  for (const line of lines.results || []) {
+  for (const line of lines) {
     if (out.length >= 2) break;
     const hits = await runLine(line, title);
     for (const hit of hits) {
@@ -166,6 +170,7 @@ apiRoutes.get('/other/all_search', async (c) => {
       }
     }
   }
+  if (out.length) await onSourceMutated(c.env, out.length);
   await c.env.KV.put(cacheKey, JSON.stringify(out), { expirationTtl: 60 });
   return c.json(jok('临时资源获取成功', out));
 });
@@ -219,6 +224,8 @@ apiRoutes.post('/open/transfer', async (c) => {
       fid: typeof res.data.fid === 'string' ? res.data.fid : JSON.stringify(res.data.fid || ''),
       is_time: expired_type === 2 ? 1 : 0,
     });
+    const { onSourceMutated } = await import('../services/cache');
+    await onSourceMutated(c.env, 1);
   }
   return c.json(jok(isType === 1 ? '获取成功' : '转存成功', res.data));
 });

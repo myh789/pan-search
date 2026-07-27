@@ -26,6 +26,7 @@ npm run smoke:sitemap
 | **Open API `/api/open/transfer` 默认同步返回分享链**（`async=1` 才进队列） | ✅ |
 | Cron、CORS、`/health`、`robots.txt` | ✅ |
 | 微信 / Chatbot 回调入口 | ⚠️ 可用但能力简化 |
+| D1 读优化：概况 stats KV、会话 KV、配置/分类/线路缓存 | ✅ |
 
 ## 转存说明（核心）
 

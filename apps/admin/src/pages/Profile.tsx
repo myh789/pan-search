@@ -69,6 +69,7 @@ export function Profile() {
           onClick={async () => {
             if (!form.admin_name.trim()) return alert('昵称必须填写');
             const j = await api.postForm('/admin/admin/updateMyInfo', form);
+            if (j.code === 200) localStorage.setItem('ps_admin_name', form.admin_name.trim());
             alert(j.message);
           }}
         >
