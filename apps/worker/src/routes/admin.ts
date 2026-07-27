@@ -324,7 +324,17 @@ adminRoutes.post('/source/aiFill', async (c) => {
   if (!ids.length) return c.json(jerr('请选择资源'));
   if (ids.length > 20) return c.json(jerr('单次最多 20 条'));
 
-  const conf = await getConf(c.env);
+  // 强制读最新 conf，避免刚配完 Key 仍命中旧 KV 缓存
+  const conf = await getConf(c.env, true);
+  if ((conf.ai_enabled ?? '1') === '0') {
+    return c.json(jerr('AI 填充未启用：请到 基础设置 → AI设置 打开开关'));
+  }
+  if (!(c.env.AGNES_API_KEY || conf.ai_api_key || '').trim()) {
+    return c.json(
+      jerr('未配置 AI API Key：请到 基础设置 → AI设置 填写 Agnes 密钥并保存（或设置 Secret AGNES_API_KEY）')
+    );
+  }
+
   const results: { source_id: number; ok: boolean; message: string }[] = [];
   let filled = 0;
   let skipped = 0;
@@ -361,11 +371,24 @@ adminRoutes.post('/source/aiFill', async (c) => {
   }
 
   return c.json(
-    jok(`完成：填充 ${filled}，跳过 ${skipped}，失败 ${results.filter((r) => !r.ok).length}`, {
-      filled,
-      skipped,
-      results,
-    })
+    jok(
+      [
+        `完成：填充 ${filled}，跳过 ${skipped}，失败 ${results.filter((r) => !r.ok).length}`,
+        skipped
+          ? `跳过原因：${
+              [...new Set(results.filter((r) => r.ok && r.message !== '已填充').map((r) => r.message))].join('；') || '未知'
+            }`
+          : '',
+        results.find((r) => !r.ok)?.message ? `失败示例：${results.find((r) => !r.ok)!.message}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      {
+        filled,
+        skipped,
+        results,
+      }
+    )
   );
 });
 

@@ -51,9 +51,25 @@ Open API 字段：`api_key`、`url`、`code`、`isType`（1=只校验）、`expi
 | 项 | 说明 |
 |----|------|
 | 模型 | 默认 `agnes-2.5-flash`（[文档](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash)） |
-| 配置位置 | 基础设置 → **AI设置**；或 Secret `AGNES_API_KEY` |
+| 配置位置 | 基础设置 → **AI设置**；或 Secret `AGNES_API_KEY`（优先） |
 | 行为 | 仅补空的 `description` / `vod_content`；批量上限 20 |
-| API | `POST /admin/source/aiFill` |
+| API | `POST /admin/source/aiFill`（未配 Key 时直接报错说明，不再静默全跳过） |
+| 注意 | D1 迁移只建配置项，**不写入密钥**；配完 Key 后点「清理缓存」 |
+
+## 近期迁移（上线前 apply）
+
+| 文件 | 内容 | 网页操作 |
+|------|------|----------|
+| `0005_temp_source_ttl.sql` | 临时资源保留分钟数 | D1 Console 执行对应 INSERT |
+| `0006_source_top_ai.sql` | `is_top` + AI 配置项 | D1 Console 执行 ALTER + AI INSERT |
+
+终端：
+
+```bash
+npx wrangler d1 migrations apply pan-search --remote
+```
+
+纯网页逐步 SQL 见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) **第五步 → 做法 B**。
 
 ## 还缺 / 偏弱
 
@@ -74,16 +90,5 @@ Open API 字段：`api_key`、`url`、`code`、`isType`（1=只校验）、`expi
 | `api_key` | `change-me` | 基础设置修改 |
 | `ENCRYPT_KEY` | 示例值 | vars/secret 修改 |
 | Agnes AI | 未配置 | 基础设置 → AI设置，或 `wrangler secret put AGNES_API_KEY` |
-
-## 近期迁移（上线前 apply）
-
-| 文件 | 内容 |
-|------|------|
-| `0005_temp_source_ttl.sql` | 临时资源保留分钟数 |
-| `0006_source_top_ai.sql` | `is_top` + AI 配置项 |
-
-```bash
-npx wrangler d1 migrations apply pan-search --remote
-```
 
 部署步骤见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)。

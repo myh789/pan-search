@@ -123,10 +123,18 @@
 | 规则 | **已有内容不覆盖**；单次最多 20 条 |
 | 配置 | 基础设置 → **AI设置**：`ai_enabled` / `ai_base_url` / `ai_model` / `ai_api_key` |
 | 默认模型 | `agnes-2.5-flash`，Base URL `https://apihub.agnes-ai.com/v1` |
-| 密钥 | 后台填写，或 `wrangler secret put AGNES_API_KEY`（**Secret 优先**）；列表回传打码 |
+| 密钥 | **必须配置**，否则会报「未配置 AI API Key」（不会真正调用模型）。后台填写，或 Secret `AGNES_API_KEY`（优先）；列表回传打码 |
+| 迁移 | D1 网页可执行 `0006` 对应 SQL（见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md) 做法 B）；**SQL 不会写入密钥** |
 
 文档参考：[Agnes 2.5 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash)
 
+常见现象：
+
+| 现象 | 原因 |
+|------|------|
+| 前台有最新更新，后台资源为空 | 未加 `is_top` 列 → 按部署教程做法 B1 执行 |
+| 「填充 0，跳过 N」且字段其实是空的 | 未配 API Key（不是「已有内容」） |
+| 「关键词与介绍均已存在，跳过」 | 两个字段都有值，按设计不覆盖 |
 ---
 
 ## 六、后台 API（管理端）

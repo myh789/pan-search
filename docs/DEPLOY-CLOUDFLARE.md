@@ -184,13 +184,78 @@ npx wrangler d1 migrations apply pan-search --remote
 > `npx wrangler d1 migrations apply pan-search --remote`。  
 > `0006` 会加资源置顶列，并写入 AI 配置项（Agnes）。
 
-### 做法 B：在 D1 网页控制台手工执行 SQL
+### 做法 B：在 D1 网页控制台手工执行 SQL（适合不想用终端）
 
-1. 控制台 → **D1** → 点开 `pan-search`
-2. 点 **控制台** / **Console**
-3. 用编辑器依次打开项目里 `drizzle/migrations/` 下的 `0000_....sql`、`0001_....sql`…  
-4. 把每个文件里的 SQL **复制到网页控制台** → 点执行  
-（顺序必须按文件名从小到大，漏执行会导致缺表。）
+1. 打开 [控制台](https://dash.cloudflare.com) → **Workers 和 Pages**（或 **存储与数据库**）→ **D1**  
+2. 点开数据库 **`pan-search`**  
+3. 点 **控制台** / **Console**  
+4. **首次建站**：按文件名从小到大，把 `drizzle/migrations/` 里每个 `.sql` 整份粘贴执行（`0000` → `0001` → …）  
+5. **已在线、只需补 0005/0006**（置顶 + AI + 临时 TTL）：下面 SQL **一条一条**执行；若提示列已存在 / duplicate，跳过该条即可。
+
+#### B1. 置顶字段（缺了会导致后台资源列表空白）
+
+```sql
+ALTER TABLE source ADD COLUMN is_top INTEGER NOT NULL DEFAULT 0;
+```
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_source_is_top ON source(is_top DESC, source_id DESC);
+```
+
+#### B2. AI 配置项（Key 留空，稍后在后台「AI设置」填写）
+
+```sql
+INSERT INTO conf (conf_key, conf_value, conf_title, conf_desc, conf_spec, conf_type, conf_status, conf_sort, conf_system, conf_createtime, conf_updatetime)
+SELECT 'ai_enabled', '1', '启用 AI 填充', '开启后可在资源管理一键生成关键词标签与资源介绍（已有内容不覆盖）', 2, 5, 1, 99, 1, strftime('%s','now'), strftime('%s','now')
+WHERE NOT EXISTS (SELECT 1 FROM conf WHERE conf_key = 'ai_enabled');
+```
+
+```sql
+INSERT INTO conf (conf_key, conf_value, conf_title, conf_desc, conf_spec, conf_type, conf_status, conf_sort, conf_system, conf_createtime, conf_updatetime)
+SELECT 'ai_base_url', 'https://apihub.agnes-ai.com/v1', 'AI Base URL', 'OpenAI 兼容接口根地址，默认 Agnes', 0, 5, 1, 98, 1, strftime('%s','now'), strftime('%s','now')
+WHERE NOT EXISTS (SELECT 1 FROM conf WHERE conf_key = 'ai_base_url');
+```
+
+```sql
+INSERT INTO conf (conf_key, conf_value, conf_title, conf_desc, conf_spec, conf_type, conf_status, conf_sort, conf_system, conf_createtime, conf_updatetime)
+SELECT 'ai_model', 'agnes-2.5-flash', 'AI 模型', '默认 Agnes 2.5 Flash', 0, 5, 1, 97, 1, strftime('%s','now'), strftime('%s','now')
+WHERE NOT EXISTS (SELECT 1 FROM conf WHERE conf_key = 'ai_model');
+```
+
+```sql
+INSERT INTO conf (conf_key, conf_value, conf_title, conf_desc, conf_spec, conf_type, conf_status, conf_sort, conf_system, conf_createtime, conf_updatetime)
+SELECT 'ai_api_key', '', 'AI API Key', 'Agnes API Key；也可通过 wrangler secret put AGNES_API_KEY 注入（Secret 优先）', 0, 5, 1, 96, 1, strftime('%s','now'), strftime('%s','now')
+WHERE NOT EXISTS (SELECT 1 FROM conf WHERE conf_key = 'ai_api_key');
+```
+
+```sql
+UPDATE conf SET conf_content = '关闭=>0
+开启=>1' WHERE conf_key = 'ai_enabled' AND (conf_content IS NULL OR conf_content = '');
+```
+
+#### B3. 临时资源 TTL（可选）
+
+```sql
+INSERT INTO conf (conf_key, conf_value, conf_title, conf_desc, conf_spec, conf_type, conf_status, conf_sort, conf_system, conf_createtime, conf_updatetime)
+SELECT 'temp_source_ttl', '30', '临时资源保留时长', '全网搜转存后的临时文件与分享链接，超过该分钟数后自动删除网盘文件并软删库记录。建议 15～120，默认 30。Cron 每 10 分钟扫描一次。', 0, 1, 1, 5, 1, strftime('%s','now'), strftime('%s','now')
+WHERE NOT EXISTS (SELECT 1 FROM conf WHERE conf_key = 'temp_source_ttl');
+```
+
+#### B4. 自检
+
+```sql
+SELECT COUNT(*) AS c FROM source WHERE is_delete = 0;
+```
+
+```sql
+PRAGMA table_info(source);
+```
+
+结果里应能看到 `is_top` 列；`c` 应与前台资源数量大致一致。
+
+> **不要**把 Agnes API Key 写进 D1 控制台公开展示的 SQL；到后台 **AI设置** 填写，或 Worker 机密里加 `AGNES_API_KEY`。
+
+执行完 SQL 后：后台点一次 **清理缓存**，再刷新资源管理。
 
 ---
 
@@ -323,6 +388,21 @@ npm run deploy
 - **置顶 / 取消置顶**：置顶资源在后台列表与前台搜索靠前  
 - **AI / AI 智能填充**：按标题生成关键词标签与资源介绍；**已有内容不覆盖**；编辑弹窗也可点「智能填充」  
 
+**使用 AI 前必须先配 Key**，否则会提示「未配置 AI API Key」（旧版可能显示「填充 0，跳过 N」）：
+
+1. **系统 → 基础设置 → AI设置** → 填写完整 `sk-…` → 保存  
+2. 或 Worker → **设置 → 变量和机密** → 添加 Secret `AGNES_API_KEY`  
+3. 点 **清理缓存** 后再试  
+
+| 提示 | 含义 |
+|------|------|
+| 未配置 AI API Key | Key 为空；按上面步骤填写 |
+| AI 填充未启用 | `ai_enabled` 为关闭 |
+| 关键词与介绍均已存在，跳过 | 该条两个字段都有内容，按设计不覆盖 |
+| 填充成功 | 空字段已写入 |
+
+模型文档：[Agnes 2.5 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash)
+
 ---
 
 ## 本机调试（可选）
@@ -420,11 +500,14 @@ npx wrangler dev --port 8787
 **改了配置前台还是旧的**  
 后台点 **清理缓存**。
 
-**AI 填充提示未配置 Key**  
-基础设置 → AI设置 填写，或 `npx wrangler secret put AGNES_API_KEY`；并确认已 apply `0006` 迁移。
+**前台有「最新更新」，后台资源管理却是空的**  
+多半缺 `is_top` 列。按本页「做法 B」执行 B1 两条 SQL，再清理缓存并刷新。若仍空：重新 `npm run deploy` 后重试。
 
-**置顶按钮无效 / 无 is_top**  
-执行 `npx wrangler d1 migrations apply pan-search --remote`（含 `0006_source_top_ai`）。
+**AI 显示「填充 0，跳过 N」或「未配置 AI API Key」**  
+不是「已有内容」；请到 **基础设置 → AI设置** 填写 Agnes Key 并保存，再清理缓存。网页执行的迁移 SQL **不会**自动写入密钥。
+
+**AI 提示未配置 Key / 置顶按钮无效**  
+确认已执行 B1～B2（或 `0006` 迁移），并已部署最新 Worker。
 
 **本地开发时定时任务不跑**  
 正常；线上 Worker 的 Cron 才会按触发器跑。
@@ -440,12 +523,13 @@ npx wrangler dev --port 8787
 ## 验收时在浏览器里勾这些
 
 - [ ] 打开 `/health`，能看到成功且数据库为 true  
-- [ ] 首页、搜索、详情能打开  
+- [ ] 首页、搜索、详情能打开；「最新更新」有数据时，后台资源管理也能看到  
 - [ ] `/qfadmin/` 能登录，概况页能改密码  
 - [ ] 附件能上传，Logo 能显示  
 - [ ] 夸克目录能浏览  
 - [ ] 全网搜有内容刷出  
-- [ ] 资源管理：置顶生效；AI 填充能写空字段（已配置 Key）  
+- [ ] D1 已有 `is_top`；资源可置顶  
+- [ ] AI设置已填 Key；智能填充能写入空的关键词/介绍（已有字段不覆盖）  
 - [ ] `/sitemap.xml` 里是正式域名  
 - [ ] 故意填错 `api_key` 会被拒绝  
 

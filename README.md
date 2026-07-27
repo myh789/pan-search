@@ -10,7 +10,8 @@
 > - 代码目录：`apps/worker`、`apps/admin`（原 ThinkPHP 代码仍保留作对照）
 >
 > 后台默认账号 `admin` / `Admin123!`（上线后请立刻改密码和 `api_key`）  
-> CF 版近期能力：**资源置顶**、**Agnes AI 一键填充关键词/介绍**、临时资源 TTL 可配置
+> CF 版近期能力：**资源置顶**、**Agnes AI 一键填充关键词/介绍**、临时资源 TTL 可配置  
+> D1 补迁移也可在网页 Console 执行 SQL，见部署教程 **第五步 → 做法 B**；AI 须在后台填 Key 后才能填充
 
 ---
 
