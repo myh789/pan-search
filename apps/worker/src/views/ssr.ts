@@ -193,8 +193,8 @@ ${conf.seo_statistics || ''}
   <div class="headerBox">
     <div class="bg" id="headerBg" style="opacity:${opts.fixed ? 0 : 1}"></div>
     <div class="box">
-      <a href="/" class="logoBox" id="headerLogo">${logo}${name}</a>
-      <div class="search" id="headerSearch">
+      <a href="/" class="logoBox" id="headerLogo" style="opacity:${opts.fixed ? 0 : 1}">${logo}${name}</a>
+      <div class="search" id="headerSearch" style="opacity:${opts.fixed ? 0 : 1}">
         <input id="kwHeader" type="text" value="${kw}" placeholder="输入关键字进行搜索" />
         <div class="btn" onclick="searchBtn(document.getElementById('kwHeader').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
@@ -312,7 +312,7 @@ function showUrlFun(item){
       if(item.is_type==0){ tipTitle='夸克APP'; tipDesc='打开夸克APP → 搜索框相机 → 扫码'; }
       else if(item.is_type==3){ tipTitle='UC浏览器'; tipDesc='打开UC浏览器 → 搜索框相机 → 扫码'; }
       html+='<div class="dialogUrl-hd"><div class="title">请使用 <span>'+tipTitle+'</span> 扫码</div><div class="tips">'+tipDesc+'</div></div>';
-      html+='<div class="qrcode" id="qrcode"><img alt="qr" width="140" height="140" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(item.showUrl)+'"/></div>';
+      html+='<div class="qrcode" id="qrcode"></div>';
     }
     html+='<div class="dialogUrl-res">';
     html+='<div class="res-name">'+(item.title||'资源')+'</div>';
@@ -320,7 +320,7 @@ function showUrlFun(item){
       html+='<a class="res-link" href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">'+item.showUrl+'</a>';
       html+='<div class="res-actions">';
       html+='<a class="res-btn primary" href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">打开网盘</a>';
-      html+='<button type="button" class="res-btn" onclick="copyText((__dlgItem&&__dlgItem.title)||\\'\\',(__dlgItem&&(__dlgItem.showUrl||__dlgItem.url))||\\'\\',(__dlgItem&&__dlgItem.code)||\\'\\')">复制链接</button>';
+      html+='<a class="res-btn" href="javascript:;" onclick="copyText((__dlgItem&&__dlgItem.title)||\\'\\',(__dlgItem&&(__dlgItem.showUrl||__dlgItem.url))||\\'\\',(__dlgItem&&__dlgItem.code)||\\'\\');return false;">复制链接</a>';
       html+='</div>';
     }
     if(item.code) html+='<div class="res-code">提取码 <b>'+item.code+'</b></div>';
@@ -330,6 +330,17 @@ function showUrlFun(item){
   }
   html+='<div class="statement"><p>本站链接由程序自动收集自公开网盘，不存储、不传播任何文件。请自行辨别内容，违规请向网盘官方举报。仅供学习交流，无收费行为。</p></div>';
   body.innerHTML=html;
+  if(item.showUrl && Number(pc_type)!==1){
+    try{
+      var box=document.getElementById('qrcode');
+      if(box && window.qrcanvas && qrcanvas.qrcanvas){
+        var canvas=qrcanvas.qrcanvas({ data:item.showUrl, size:140 });
+        box.appendChild(canvas);
+      } else if(box){
+        box.innerHTML='<img alt="qr" width="140" height="140" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(item.showUrl)+'"/>';
+      }
+    }catch(e){}
+  }
   showModal('urlModal');
 }
 window.addEventListener('scroll',function(){
@@ -358,14 +369,15 @@ ${opts.extraScript || ''}
 export async function renderHome(env: Env, conf: Record<string, string>) {
   const { getCachedCategories, getCachedHomeLatest } = await import('../services/cache');
   const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
-  const limit = Number(conf.ranking_num) || 10;
-  const mLimit = Number(conf.ranking_m_num) || 6;
+  const limit = Math.min(10, Math.max(1, Number(conf.ranking_num) || 10));
+  const mLimit = Math.min(limit, Math.max(1, Number(conf.ranking_m_num) || 6));
   const withImg = conf.ranking_type === '1';
 
   let newBlock = '';
   if (conf.home_new === '0') {
     const news = await getCachedHomeLatest(env, limit);
     const items = (news || [])
+      .slice(0, limit)
       .map((x: any, i: number) => {
         if (withImg) {
           return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><div class="img"><span class="titleLoading">${esc(
@@ -396,6 +408,7 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       list = local.results || [];
     }
     const items = (list || [])
+      .slice(0, limit)
       .map((x: any, i: number) => {
         const href = x.id ? `/d/${x.id}.html` : `/s/${encodeURIComponent(x.title)}.html`;
         if (withImg) {
@@ -426,6 +439,9 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   const titleHtml =
     conf.app_name && conf.app_name_hide !== '1' ? `<span class="title">${esc(conf.app_name)}</span>` : '';
 
+  const sectionCount = (newBlock ? 1 : 0) + blocks.length;
+  const homeClass = [withImg ? '' : 'homeNO', sectionCount === 1 ? 'homeSingle' : ''].filter(Boolean).join(' ');
+
   const body = `
   <div class="homeBox searchBox">
     <div class="box">
@@ -436,7 +452,7 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
         <div class="btn" onclick="searchBtn(document.getElementById('kwHome').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
     </div>
-    <div class="home ${withImg ? '' : 'homeNO'}">${newBlock}${blocks.join('')}</div>
+    <div class="home ${homeClass}">${newBlock}${blocks.join('')}</div>
   </div>`;
 
   const extraScript = `
@@ -720,7 +736,7 @@ export async function renderList(
       item.showUrl=item.url; showUrlFun(item); return;
     }
     showModal('urlModal');
-    document.getElementById('urlModalBody').innerHTML='<div class="dialogUrl-loading">正在转存资源…</div>';
+    document.getElementById('urlModalBody').innerHTML='<div class="dialogUrl-loading"><div class="dlg-spinner" aria-hidden="true"></div><p>链接安全检查中，请稍后</p></div>';
     try{
       var r=await fetch('/api/other/save_url',{
         method:'POST',
