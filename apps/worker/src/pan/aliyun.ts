@@ -69,26 +69,38 @@ export class AlipanPan implements PanAdapter {
   }
 
   async getFiles(pdirFid: string | number = 'root') {
-    const token = await this.getAccessToken();
-    if (!token) return { code: 500, message: '阿里未登录，请配置 Authorization(refresh_token)' };
-    const driveId = this.driveId();
-    if (!driveId) return { code: 500, message: '未配置 ali_drive_id' };
-    const res = await httpJson('https://api.aliyundrive.com/adrive/v3/file/list', {
-      method: 'POST',
-      headers: aliHeaders(token),
-      body: {
-        all: false,
-        drive_id: driveId,
-        fields: '*',
-        limit: 100,
-        order_by: 'updated_at',
-        order_direction: 'DESC',
-        parent_file_id: pdirFid === 0 || pdirFid === '0' ? 'root' : String(pdirFid),
-        url_expire_sec: 14400,
-      },
-    });
-    if (res.data?.message) return { code: 500, message: res.data.message };
-    return { code: 200, message: '获取成功', data: res.data?.items || [] } as any;
+    try {
+      const token = await this.getAccessToken();
+      if (!token) return { code: 500, message: '阿里未登录，请配置 Authorization(refresh_token)' };
+      const driveId = this.driveId();
+      if (!driveId) return { code: 500, message: '未配置 ali_drive_id' };
+      const parent =
+        pdirFid === 0 || pdirFid === '0' || pdirFid === '' || pdirFid == null ? 'root' : String(pdirFid);
+      const res = await httpJson('https://api.aliyundrive.com/adrive/v3/file/list', {
+        method: 'POST',
+        headers: aliHeaders(token),
+        body: {
+          all: false,
+          drive_id: driveId,
+          fields: '*',
+          limit: 100,
+          order_by: 'updated_at',
+          order_direction: 'DESC',
+          parent_file_id: parent,
+          url_expire_sec: 14400,
+        },
+      });
+      if (res.status >= 400 || res.data?.code || res.data?.message) {
+        const msg = res.data?.message || res.data?.code || `阿里接口错误(${res.status})`;
+        if (/AccessToken\|token|InvalidParameter\.RefreshToken|expired/i.test(String(msg))) {
+          return { code: 500, message: '阿里 Token 无效或过期，请重新填写 Authorization' };
+        }
+        return { code: 500, message: String(msg) };
+      }
+      return { code: 200, message: '获取成功', data: res.data?.items || [] } as any;
+    } catch (e: any) {
+      return { code: 500, message: e?.message || '阿里目录获取失败' };
+    }
   }
 
   async deletepdirFid(filelist: string[]) {

@@ -253,16 +253,22 @@ export class BaiduPan implements PanAdapter {
   ) {}
 
   async getFiles(pdirFid: string | number = 0) {
-    const cookie = this.conf.baidu_cookie || '';
-    if (!cookie) return { code: 500, message: '未配置百度Cookie' };
-    const work = new BaiduWork(cookie);
-    const token = await work.getBdstoken();
-    if (typeof token === 'number') return { code: 500, message: errMsg(token) };
-    work.bdstoken = token;
-    const dir = pdirFid === 0 || pdirFid === '0' ? '/' : String(pdirFid);
-    const list = await work.getDirList(dir);
-    if (typeof list === 'number') return { code: 500, message: errMsg(list) };
-    return { code: 200, message: '获取成功', data: list } as any;
+    try {
+      const cookie = this.conf.baidu_cookie || '';
+      if (!cookie) return { code: 500, message: '未配置百度Cookie' };
+      const work = new BaiduWork(cookie);
+      const token = await work.getBdstoken();
+      if (typeof token === 'number') return { code: 500, message: errMsg(token) };
+      if (!token) return { code: 500, message: '百度未登录，请检查 cookie' };
+      work.bdstoken = token;
+      const dir =
+        pdirFid === 0 || pdirFid === '0' || pdirFid === 'root' || pdirFid === '' ? '/' : String(pdirFid);
+      const list = await work.getDirList(dir);
+      if (typeof list === 'number') return { code: 500, message: errMsg(list) };
+      return { code: 200, message: '获取成功', data: list } as any;
+    } catch (e: any) {
+      return { code: 500, message: e?.message || '百度目录获取失败' };
+    }
   }
 
   async deletepdirFid(filelist: string[]) {
