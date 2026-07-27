@@ -16,8 +16,92 @@ const empty = {
   fixed_params: '{"keyword":"{keyword}"}',
   field_map: '{"list":"data","title":"title","url":"url"}',
   headers: '{}',
+  html_item: '',
+  html_title: '',
+  html_url: '',
+  html_url2: '',
+  html_type: 0,
   status: 1,
 };
+
+/** 实测可用的夸克搜索源（PanSou 系 JSON 接口 / TG） */
+const presets: Array<{ label: string; form: Partial<typeof empty> }> = [
+  {
+    label: 'PanHunt（推荐）',
+    form: {
+      name: 'PanHunt夸克',
+      type: 'api',
+      pantype: 0,
+      url: 'https://s.panhunt.com/api/search',
+      method: 'GET',
+      count: 5,
+      weight: 20,
+      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
+      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
+      headers: '{}',
+    },
+  },
+  {
+    label: 'so.252035',
+    form: {
+      name: '252035夸克',
+      type: 'api',
+      pantype: 0,
+      url: 'https://so.252035.xyz/api/search',
+      method: 'GET',
+      count: 5,
+      weight: 15,
+      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
+      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
+      headers: '{}',
+    },
+  },
+  {
+    label: 'pansou.app',
+    form: {
+      name: 'PanSou夸克',
+      type: 'api',
+      pantype: 0,
+      url: 'https://pansou.app/api/search',
+      method: 'GET',
+      count: 5,
+      weight: 12,
+      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
+      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
+      headers: '{}',
+    },
+  },
+  {
+    label: 'TG·NewQuark',
+    form: {
+      name: 'TG-NewQuark',
+      type: 'tg',
+      pantype: 0,
+      url: 'NewQuark',
+      method: 'GET',
+      count: 5,
+      weight: 8,
+      fixed_params: '{}',
+      field_map: '{}',
+      headers: '{}',
+    },
+  },
+  {
+    label: 'KK内置',
+    form: {
+      name: 'KK夸克',
+      type: 'kk',
+      pantype: 0,
+      url: 'https://m.kkkba.com',
+      method: 'POST',
+      count: 5,
+      weight: 5,
+      fixed_params: '{}',
+      field_map: '{}',
+      headers: '{}',
+    },
+  },
+];
 
 export function ApiList() {
   const [items, setItems] = useState<any[]>([]);
@@ -45,6 +129,24 @@ export function ApiList() {
 
   const formFields = (
     <>
+      {dlg === 'add' && (
+        <div className="field">
+          <label>推荐线路</label>
+          <div className="seg" style={{ flexWrap: 'wrap', gap: 6 }}>
+            {presets.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className="plain sm"
+                onClick={() => setForm({ ...empty, ...p.form, status: 1, id: 0 })}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <p className="tips">点一下自动填好「接口」参数；PanHunt / 252035 实测可用</p>
+        </div>
+      )}
       <div className="field">
         <label>网盘类型</label>
         <div className="seg">
@@ -78,12 +180,12 @@ export function ApiList() {
             </button>
           ))}
         </div>
-        {form.type === 'html' && <p className="tips"><em>网页爬虫配置较复杂，不推荐</em></p>}
+        {form.type === 'html' && <p className="tips"><em>网页爬虫：地址里用 {'{keyword}'} 占位；猫狸盘搜等站点可留空下方标签（自动解析 /s/id）</em></p>}
         {form.type === 'tg' && <p className="tips"><em>国内服务器可能无法访问；如 https://t.me/s/NewQuark 只填 NewQuark</em></p>}
       </div>
       <div className="field">
-        <label>{form.type === 'tg' ? 'TG 频道' : '地址'}</label>
-        <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} />
+        <label>{form.type === 'tg' ? 'TG 频道' : form.type === 'html' ? '目标网址' : '地址'}</label>
+        <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder={form.type === 'html' ? 'https://www.alipansou.com/search?k={keyword}&p=quark&s=0&t=-1' : ''} />
       </div>
       <div className="field">
         <label>权重/排序</label>
@@ -103,6 +205,38 @@ export function ApiList() {
           <div className="field">
             <label>field_map</label>
             <textarea rows={2} value={form.field_map} onChange={(e) => setForm({ ...form, field_map: e.target.value })} />
+          </div>
+        </>
+      ) : null}
+      {form.type === 'html' ? (
+        <>
+          <div className="field">
+            <label>内容标签 html_item</label>
+            <input value={form.html_item} onChange={(e) => setForm({ ...form, html_item: e.target.value })} placeholder="可选；猫狸盘搜可留空" />
+          </div>
+          <div className="field">
+            <label>标题标签 html_title</label>
+            <input value={form.html_title} onChange={(e) => setForm({ ...form, html_title: e.target.value })} placeholder="可选" />
+          </div>
+          <div className="field">
+            <label>详情页</label>
+            <div className="seg">
+              <button type="button" className={form.html_type === 0 ? 'active' : ''} onClick={() => setForm({ ...form, html_type: 0 })}>
+                不需要
+              </button>
+              <button type="button" className={form.html_type === 1 ? 'active' : ''} onClick={() => setForm({ ...form, html_type: 1 })}>
+                需要
+              </button>
+            </div>
+            <p className="tips">猫狸盘搜选「不需要」（列表 /s/id 即分享码）</p>
+          </div>
+          <div className="field">
+            <label>详情页标签 html_url</label>
+            <input value={form.html_url} onChange={(e) => setForm({ ...form, html_url: e.target.value })} placeholder="可选" />
+          </div>
+          <div className="field">
+            <label>网盘链接 html_url2</label>
+            <input value={form.html_url2} onChange={(e) => setForm({ ...form, html_url2: e.target.value })} placeholder="可选" />
           </div>
         </>
       ) : null}
@@ -186,6 +320,11 @@ export function ApiList() {
                       fixed_params: it.fixed_params || '{}',
                       field_map: it.field_map || '{}',
                       headers: it.headers || '{}',
+                      html_item: it.html_item || '',
+                      html_title: it.html_title || '',
+                      html_url: it.html_url || '',
+                      html_url2: it.html_url2 || '',
+                      html_type: Number(it.html_type) || 0,
                       status: it.status ?? 1,
                     });
                     setDlg('edit');

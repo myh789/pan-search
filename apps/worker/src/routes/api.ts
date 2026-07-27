@@ -107,9 +107,15 @@ apiRoutes.get('/other/web_search', async (c) => {
 
 apiRoutes.post('/other/save_url', async (c) => {
   const conf = await getConf(c.env);
-  const body = await c.req.json<{ url?: string; code?: string; stoken?: string }>().catch(() => ({} as any));
+  const body = await c.req.json<{ url?: string; code?: string; stoken?: string; title?: string }>().catch(() => ({} as any));
   let url = body.url || '';
   try {
+    // 前端与原版 PHP 一致：先 encodeURIComponent 再提交，这里必须 urldecode
+    try {
+      url = decodeURIComponent(url);
+    } catch {
+      /* keep raw */
+    }
     if (url && !url.startsWith('http')) url = await aesDecrypt(c.env, url);
     if (typeof url !== 'string') url = String(url);
   } catch {

@@ -18,11 +18,74 @@ function extractUrls(text: string, pantype: number): string[] {
   return [...new Set(text.match(re) || [])];
 }
 
+/** 将聚合站相对路径 /s/{id} 转为真实网盘分享链接（如猫狸盘搜） */
+function shareIdToPanUrl(id: string, pantype: number): string {
+  const bases: Record<number, string> = {
+    0: `https://pan.quark.cn/s/${id}`,
+    1: `https://www.alipan.com/s/${id}`,
+    2: `https://pan.baidu.com/s/${id}`,
+    3: `https://drive.uc.cn/s/${id}`,
+    4: `https://pan.xunlei.com/s/${id}`,
+  };
+  return bases[pantype] || bases[0];
+}
+
+function resolvePanUrl(raw: string, pantype: number): string | null {
+  const absolute = extractUrls(raw, pantype);
+  if (absolute.length) return absolute[0];
+  const m = String(raw || '').match(/\/s\/([A-Za-z0-9_\-]+)/);
+  if (m) return shareIdToPanUrl(m[1], pantype);
+  return null;
+}
+
+function stripHtml(s: string) {
+  return String(s || '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** 解析猫狸盘搜等：列表页只有 /s/{id}，id 即夸克等分享码 */
+function parseAggregatorList(html: string, pantype: number, keyword: string, limit: number): SearchHit[] {
+  const hits: SearchHit[] = [];
+  const seen = new Set<string>();
+  // <a href="/s/ID"> ... name="content-title">标题</div>
+  const re =
+    /href=["'](\/s\/[A-Za-z0-9_\-]+)["'][\s\S]*?(?:name=["']content-title["'][^>]*>|class=["'][^"']*content-title[^"']*["'][^>]*>)([\s\S]*?)<\/div>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) && hits.length < limit) {
+    const url = resolvePanUrl(m[1], pantype);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const title = stripHtml(m[2]) || keyword;
+    hits.push({ title, url });
+  }
+  if (hits.length) return hits;
+
+  // 退化：仅抓 /s/id
+  const idRe = /href=["']\/s\/([A-Za-z0-9_\-]+)["']/gi;
+  while ((m = idRe.exec(html)) && hits.length < limit) {
+    const url = shareIdToPanUrl(m[1], pantype);
+    if (seen.has(url)) continue;
+    seen.add(url);
+    hits.push({ title: keyword, url });
+  }
+  return hits;
+}
+
 function mapFields(obj: any, fieldMap: Record<string, string>): SearchHit | null {
-  const title = fieldMap.title ? getByPath(obj, fieldMap.title) : obj.title || obj.name;
-  const url = fieldMap.url ? getByPath(obj, fieldMap.url) : obj.url || obj.link;
+  const title = fieldMap.title
+    ? getByPath(obj, fieldMap.title)
+    : obj.title || obj.note || obj.name || obj.taskname;
+  const url = fieldMap.url ? getByPath(obj, fieldMap.url) : obj.url || obj.link || obj.shareurl;
   if (!title || !url) return null;
-  return { title: String(title), url: String(url) };
+  // PanSou 的 note 常带简介，截断作标题
+  const titleStr = String(title).replace(/\s+/g, ' ').trim().slice(0, 120);
+  return { title: titleStr, url: String(url) };
 }
 
 function getByPath(obj: any, path: string) {
@@ -112,25 +175,44 @@ export async function handleTgLine(line: any, keyword: string): Promise<SearchHi
 
 export async function handleHtmlLine(line: any, keyword: string): Promise<SearchHit[]> {
   const url = String(line.url || '').replace(/\{keyword\}/g, encodeURIComponent(keyword));
-  const res = await httpJson(url, { method: line.method || 'GET' });
+  const pantype = Number(line.pantype) || 0;
+  const limit = Number(line.count) || 20;
+  const res = await httpJson(url, {
+    method: line.method || 'GET',
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml',
+    },
+  });
   const html = res.text || '';
-  // naive regex extraction using selectors as patterns in attributes/text
+
+  // 猫狸盘搜 / 同类聚合：优先专用解析（列表页无直链，/s/id 即分享码）
+  if (/alipansou\.com|xiongdipan\.com|xunjiso\.com/i.test(url) || /name=["']content-title["']/i.test(html)) {
+    const agg = parseAggregatorList(html, pantype, keyword, limit);
+    if (agg.length) return agg;
+  }
+
   const hits: SearchHit[] = [];
-  const itemRe = new RegExp(line.html_item || 'href=["\'](https?://[^"\']+)["\'][^>]*>([^<]+)', 'gi');
+  const seen = new Set<string>();
+  const itemRe = new RegExp(line.html_item || 'href=["\']([^"\']+)["\'][^>]*>([^<]+)', 'gi');
   let match: RegExpExecArray | null;
-  while ((match = itemRe.exec(html)) && hits.length < (Number(line.count) || 20)) {
-    // Prefer pan urls
-    const urls = extractUrls(match[0], Number(line.pantype) || 0);
-    if (urls.length) {
-      hits.push({ title: (match[2] || keyword).trim(), url: urls[0] });
-    } else if (line.html_url && match[1]) {
-      hits.push({ title: (match[2] || keyword).trim(), url: match[1] });
+  while ((match = itemRe.exec(html)) && hits.length < limit) {
+    const resolved =
+      resolvePanUrl(match[0], pantype) ||
+      resolvePanUrl(match[1] || '', pantype) ||
+      (line.html_url ? resolvePanUrl(String(line.html_url).replace(/\{1\}/g, match[1] || ''), pantype) : null);
+    if (!resolved || seen.has(resolved)) continue;
+    seen.add(resolved);
+    hits.push({ title: stripHtml(match[2] || keyword) || keyword, url: resolved });
+  }
+  if (!hits.length) {
+    for (const u of extractUrls(html, pantype).slice(0, limit)) {
+      hits.push({ title: keyword, url: u });
     }
   }
   if (!hits.length) {
-    for (const u of extractUrls(html, Number(line.pantype) || 0).slice(0, Number(line.count) || 20)) {
-      hits.push({ title: keyword, url: u });
-    }
+    return parseAggregatorList(html, pantype, keyword, limit);
   }
   return hits;
 }
