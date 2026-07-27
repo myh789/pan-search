@@ -27,7 +27,7 @@ export class AlipanPan implements PanAdapter {
   }
 
   private async getAccessToken(): Promise<string> {
-    const refresh = this.conf.Authorization || '';
+    const refresh = (this.conf.Authorization || '').trim();
     if (!refresh) return '';
 
     if (this.env) {
@@ -72,10 +72,12 @@ export class AlipanPan implements PanAdapter {
     try {
       const token = await this.getAccessToken();
       if (!token) return { code: 500, message: '阿里未登录，请配置 Authorization(refresh_token)' };
-      const driveId = this.driveId();
+      const driveId = (this.driveId() || '').trim();
       if (!driveId) return { code: 500, message: '未配置 ali_drive_id' };
       const parent =
-        pdirFid === 0 || pdirFid === '0' || pdirFid === '' || pdirFid == null ? 'root' : String(pdirFid);
+        pdirFid === 0 || pdirFid === '0' || pdirFid === '' || pdirFid == null || pdirFid === 'root'
+          ? 'root'
+          : String(pdirFid);
       const res = await httpJson('https://api.aliyundrive.com/adrive/v3/file/list', {
         method: 'POST',
         headers: aliHeaders(token),
@@ -90,14 +92,19 @@ export class AlipanPan implements PanAdapter {
           url_expire_sec: 14400,
         },
       });
-      if (res.status >= 400 || res.data?.code || res.data?.message) {
-        const msg = res.data?.message || res.data?.code || `阿里接口错误(${res.status})`;
-        if (/AccessToken\|token|InvalidParameter\.RefreshToken|expired/i.test(String(msg))) {
+      // 成功时通常没有 message；有 code/message 才是失败
+      if (res.data?.code && res.data?.code !== 'Success') {
+        const msg = res.data?.message || res.data?.code || `阿里接口错误`;
+        if (/AccessToken|token|InvalidParameter\.RefreshToken|expired|Unauthorized/i.test(String(msg))) {
           return { code: 500, message: '阿里 Token 无效或过期，请重新填写 Authorization' };
         }
         return { code: 500, message: String(msg) };
       }
-      return { code: 200, message: '获取成功', data: res.data?.items || [] } as any;
+      if (res.status >= 400) {
+        return { code: 500, message: res.data?.message || `阿里接口错误(${res.status})` };
+      }
+      const items = res.data?.items || res.data?.data?.items || [];
+      return { code: 200, message: '获取成功', data: Array.isArray(items) ? items : [] } as any;
     } catch (e: any) {
       return { code: 500, message: e?.message || '阿里目录获取失败' };
     }

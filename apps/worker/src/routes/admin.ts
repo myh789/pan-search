@@ -169,7 +169,10 @@ adminRoutes.post('/conf/updateBaseConfig', async (c) => {
     await c.env.KV.delete('aliyun:token');
     await c.env.KV.delete('aliyun:access_token');
   }
-  if (touchXunlei) await c.env.KV.delete('xunlei:access_token');
+  if (touchXunlei) {
+    await c.env.KV.delete('xunlei:access_token');
+    await c.env.KV.delete('xunlei:captcha');
+  }
   return c.json(jok('保存成功'));
 });
 
@@ -338,40 +341,63 @@ adminRoutes.post('/source/imports', async (c) => {
   return c.json(jok('已提交导入任务', { logId }));
 });
 
-adminRoutes.get('/source/getFiles', async (c) => {
+adminRoutes.get('/source/getFiles', async (c) => handleGetFiles(c));
+adminRoutes.post('/source/getFiles', async (c) => handleGetFiles(c));
+
+async function handleGetFiles(c: any) {
   try {
-    // 账号检测/目录浏览：强制读最新 conf，避免刚保存 Cookie 仍命中旧 KV
     const conf = await getConf(c.env, true);
-    const type = Number(c.req.query('type') || 0);
-    const pdirRaw = c.req.query('pdir_fid');
+    const body = c.req.method === 'POST' ? await c.req.parseBody().catch(() => ({})) : {};
+    const type = Number(c.req.query('type') || (body as any).type || 0);
+    const pdirRaw = String(c.req.query('pdir_fid') ?? (body as any).pdir_fid ?? '');
     const pdir =
-      pdirRaw === undefined || pdirRaw === null || pdirRaw === '' || pdirRaw === '0' || pdirRaw === 'root'
+      pdirRaw === '' || pdirRaw === '0' || pdirRaw === 'root'
         ? type === 1
           ? 'root'
-          : 0
+          : type === 2
+            ? '/'
+            : type === 4
+              ? ''
+              : '0'
         : pdirRaw;
     const pan = createPan(type, conf, { url: '' }, c.env);
     const res = await pan.getFiles(pdir);
     if (res.code !== 200) return c.json(jerr(res.message || '获取失败'));
     const list = Array.isArray((res as any).data) ? (res as any).data : [];
-    // 统一字段，方便前台列表渲染
-    const normalized = list.map((f: any) => ({
-      ...f,
-      _name: f.file_name || f.server_filename || f.name || f.title || '-',
-      _id: String(f.fid || f.file_id || f.fs_id || f.id || f.path || ''),
-      _is_dir:
-        f.dir === true ||
-        f.isdir === 1 ||
-        f.isdir === '1' ||
-        f.file_type === 0 ||
-        f.kind === 'drive#folder' ||
-        f.type === 'folder',
-    }));
+    const normalized = list.map((f: any) => {
+      // 按网盘对齐原版 cascader 的 value/label/是否文件夹字段
+      let id = '';
+      let name = '-';
+      let isDir = false;
+      if (type === 0 || type === 3) {
+        id = String(f.fid || '');
+        name = f.file_name || f.name || '-';
+        isDir = f.dir === true || f.dir === 1 || f.dir === '1';
+      } else if (type === 1) {
+        id = String(f.file_id || '');
+        name = f.name || '-';
+        isDir = f.type === 'folder';
+      } else if (type === 2) {
+        id = String(f.path || f.fs_id || '');
+        name = f.server_filename || f.name || '-';
+        isDir = f.isdir == 1 || f.isdir === '1' || f.isdir === true;
+      } else if (type === 4) {
+        id = String(f.id || '');
+        name = f.name || '-';
+        isDir = f.kind === 'drive#folder';
+      } else {
+        id = String(f.fid || f.file_id || f.fs_id || f.id || f.path || '');
+        name = f.file_name || f.server_filename || f.name || '-';
+        isDir = !!(f.dir || f.isdir || f.type === 'folder' || f.kind === 'drive#folder');
+      }
+      return { ...f, _id: id, _name: name, _is_dir: !!isDir };
+    });
+    normalized.sort((a: any, b: any) => Number(b._is_dir) - Number(a._is_dir));
     return c.json(jok('获取成功', normalized));
   } catch (e: any) {
     return c.json(jerr(e?.message || '账号检测失败，请检查 Cookie/Token'));
   }
-});
+}
 
 adminRoutes.post('/source/transferAll', async (c) => {
   const body = await c.req.parseBody().catch(() => ({} as any));

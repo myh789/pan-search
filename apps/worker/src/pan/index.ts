@@ -12,11 +12,14 @@ export { AlipanPan } from './aliyun';
 function quarkHeaders(cookie: string): Record<string, string> {
   return {
     Accept: 'application/json, text/plain, */*',
-    'content-type': 'application/json;charset=UTF-8',
+    'Accept-Language': 'zh-CN,zh;q=0.9',
     Referer: 'https://pan.quark.cn/',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
     'user-agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    cookie,
+    // Cookie 统一由 httpJson 设置，避免重复头
   };
 }
 
@@ -31,12 +34,19 @@ async function quarkApi(
   const res = await httpJson(url, {
     method: m,
     headers: quarkHeaders(cookie),
-    // GET 不传 body，避免 Workers 抛错
     body: m === 'GET' || m === 'HEAD' ? undefined : body ?? {},
     query,
     cookie,
   });
   return res.data;
+}
+
+function extractQuarkList(data: any): any[] {
+  if (!data || typeof data !== 'object') return [];
+  if (Array.isArray(data.data?.list)) return data.data.list;
+  if (Array.isArray(data.list)) return data.list;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
 }
 
 export class QuarkPan implements PanAdapter {
@@ -46,16 +56,17 @@ export class QuarkPan implements PanAdapter {
   ) {}
 
   async getFiles(pdirFid: string | number = 0) {
-    const cookie = this.conf.quark_cookie || '';
+    const cookie = (this.conf.quark_cookie || '').trim();
     if (!cookie) return { code: 500, message: '未配置夸克Cookie' };
     try {
+      const fid = pdirFid === 'root' || pdirFid === '' || pdirFid == null ? '0' : String(pdirFid);
       const data = await quarkApi(cookie, 'https://drive-pc.quark.cn/1/clouddrive/file/sort', 'GET', undefined, {
         pr: 'ucpro',
         fr: 'pc',
         uc_param_str: '',
-        pdir_fid: pdirFid === 'root' ? 0 : pdirFid,
+        pdir_fid: fid,
         _page: 1,
-        _size: 50,
+        _size: 200,
         _fetch_total: 1,
         _fetch_sub_dirs: 0,
         _sort: 'file_type:asc,updated_at:desc',
@@ -63,13 +74,18 @@ export class QuarkPan implements PanAdapter {
       if (!data || typeof data !== 'object') {
         return { code: 500, message: '夸克接口无响应，请检查 Cookie 或网络' };
       }
-      if (data?.status !== 200) {
+      // 兼容 status / code
+      const ok = data.status === 200 || data.code === 0 || data.code === 200;
+      if (!ok) {
         return {
           code: 500,
-          message: data?.message === 'require login [guest]' ? '夸克未登录，请检查cookie' : data?.message || '获取失败',
+          message:
+            data?.message === 'require login [guest]'
+              ? '夸克未登录，请检查cookie'
+              : data?.message || data?.error_msg || '获取失败',
         };
       }
-      return { code: 200, message: '获取成功', data: data.data?.list || [] } as any;
+      return { code: 200, message: '获取成功', data: extractQuarkList(data) } as any;
     } catch (e: any) {
       return { code: 500, message: e?.message || '夸克目录获取失败' };
     }
@@ -273,73 +289,71 @@ export class QuarkPan implements PanAdapter {
 
 /** UC is Quark-API compatible with different hosts */
 export class UcPan implements PanAdapter {
-  private quark: QuarkPan;
-  constructor(conf: Record<string, string>, cfg: TransferConfig) {
-    const mapped = {
-      ...conf,
-      quark_cookie: conf.uc_cookie,
-      quark_file: conf.uc_file,
-      quark_file_time: conf.uc_file_time,
-      quark_banned: '',
-    };
-    this.quark = new QuarkPan(mapped, cfg);
-    // override endpoints via subclassing pattern — reimplement thin wrappers
-    this._cfg = cfg;
-    this._conf = conf;
-  }
-  private _cfg: TransferConfig;
-  private _conf: Record<string, string>;
+  constructor(
+    private _conf: Record<string, string>,
+    private _cfg: TransferConfig
+  ) {}
 
   private headers() {
     return {
       Accept: 'application/json, text/plain, */*',
-      'content-type': 'application/json;charset=UTF-8',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
       Referer: 'https://drive.uc.cn/',
-      cookie: this._conf.uc_cookie || '',
+      'sec-fetch-dest': 'empty',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-site',
+      'user-agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     };
   }
 
   async getFiles(pdirFid: string | number = 0) {
-    const cookie = this._conf.uc_cookie || '';
+    const cookie = (this._conf.uc_cookie || '').trim();
     if (!cookie) return { code: 500, message: '未配置UC Cookie' };
     try {
-      const data = await httpJson('https://pc-api.uc.cn/1/clouddrive/file/sort', {
+      const fid =
+        pdirFid === 'root' || pdirFid === '' || pdirFid == null ? '0' : String(pdirFid);
+      const res = await httpJson('https://pc-api.uc.cn/1/clouddrive/file/sort', {
         method: 'GET',
         headers: this.headers(),
         cookie,
         query: {
           pr: 'UCBrowser',
           fr: 'pc',
-          pdir_fid: String(pdirFid === 'root' ? 0 : pdirFid),
+          pdir_fid: fid,
           _page: 1,
-          _size: 50,
+          _size: 200,
           _fetch_total: 1,
           _fetch_sub_dirs: 0,
           _sort: 'file_type:asc,updated_at:desc',
         },
       });
-      const payload = data.data;
+      const payload = res.data;
       if (!payload || typeof payload !== 'object') {
         return { code: 500, message: 'UC 接口无响应，请检查 Cookie 或网络' };
       }
-      if (payload.status !== 200) {
+      const ok = payload.status === 200 || payload.code === 0 || payload.code === 200;
+      if (!ok) {
         return {
           code: 500,
           message:
-            payload.message === 'require login [guest]' ? 'UC未登录，请检查cookie' : payload.message || '失败',
+            payload.message === 'require login [guest]'
+              ? 'UC未登录，请检查cookie'
+              : payload.message || payload.error_msg || '失败',
         };
       }
-      return { code: 200, message: '获取成功', data: payload.data?.list || [] } as any;
+      const list = extractQuarkList(payload);
+      return { code: 200, message: '获取成功', data: list } as any;
     } catch (e: any) {
       return { code: 500, message: e?.message || 'UC 目录获取失败' };
     }
   }
 
   async deletepdirFid(filelist: string[]) {
-    const cookie = this._conf.uc_cookie || '';
+    const cookie = (this._conf.uc_cookie || '').trim();
     const data = await httpJson('https://pc-api.uc.cn/1/clouddrive/file/delete', {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'content-type': 'application/json;charset=UTF-8' },
       cookie,
       body: { action_type: 2, exclude_fids: [], filelist },
       query: { pr: 'UCBrowser', fr: 'pc' },
@@ -350,15 +364,12 @@ export class UcPan implements PanAdapter {
   }
 
   async transfer(pwdId: string): Promise<TransferResult> {
-    // Delegate similar flow on UC hosts — reuse quark logic with mapped conf by temporarily swapping base via QuarkPan-like calls
-    // For parity: call quark transfer with UC cookie mapped (QuarkPan already used for Quark). Re-run with UC endpoints:
-    const cookie = this._conf.uc_cookie || '';
+    const cookie = (this._conf.uc_cookie || '').trim();
     if (!cookie) return { code: 500, message: '未配置UC Cookie' };
 
-    // Minimal: validate-only path
     const tokenRes = await httpJson('https://pc-api.uc.cn/1/clouddrive/share/sharepage/token', {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'content-type': 'application/json;charset=UTF-8' },
       cookie,
       body: { passcode: this._cfg.code || '', pwd_id: pwdId },
       query: { pr: 'UCBrowser', fr: 'pc' },
@@ -371,7 +382,6 @@ export class UcPan implements PanAdapter {
       return { code: 200, message: '检验成功', data: { title, share_url: this._cfg.url, stoken } };
     }
 
-    // Full transfer: mirror Quark save/share on UC API
     const detail = await httpJson('https://pc-api.uc.cn/1/clouddrive/share/sharepage/detail', {
       method: 'GET',
       headers: this.headers(),
@@ -399,7 +409,7 @@ export class UcPan implements PanAdapter {
 
     const saveRes = await httpJson('https://pc-api.uc.cn/1/clouddrive/share/sharepage/save', {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'content-type': 'application/json;charset=UTF-8' },
       cookie,
       body: { fid_list, fid_token_list, to_pdir_fid, pwd_id: pwdId, stoken, pdir_fid: '0', scene: 'link' },
       query: { pr: 'UCBrowser', fr: 'pc' },
@@ -425,7 +435,7 @@ export class UcPan implements PanAdapter {
     const shareFid = myData.save_as.save_as_top_fids;
     const btn = await httpJson('https://pc-api.uc.cn/1/clouddrive/share', {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'content-type': 'application/json;charset=UTF-8' },
       cookie,
       body: { fid_list: shareFid, expired_type: this._cfg.expired_type || 1, title: shareTitle, url_type: 1 },
       query: { pr: 'UCBrowser', fr: 'pc' },
@@ -449,7 +459,7 @@ export class UcPan implements PanAdapter {
     if (!shareTask?.share_id) return { code: 500, message: '分享任务超时' };
     const pwd = await httpJson('https://pc-api.uc.cn/1/clouddrive/share/password', {
       method: 'POST',
-      headers: this.headers(),
+      headers: { ...this.headers(), 'content-type': 'application/json;charset=UTF-8' },
       cookie,
       body: { share_id: shareTask.share_id },
       query: { pr: 'UCBrowser', fr: 'pc' },
@@ -477,16 +487,24 @@ export class XunleiPan implements PanAdapter {
   ) {}
 
   private clientId = 'Xqp0kJBXWhwaTpB6';
+  private deviceId = '925b7631473a13716b791d7f28289cad';
 
   private async getAccessToken(): Promise<string> {
     if (this.env) {
       const cached = await this.env.KV.get('xunlei:access_token', 'json');
       if (cached && (cached as any).expires_at > Date.now() / 1000) return (cached as any).access_token;
     }
-    const refresh = this.conf.xunlei_cookie || '';
+    const refresh = (this.conf.xunlei_cookie || '').trim();
     if (!refresh) return '';
     const res = await httpJson('https://xluser-ssl.xunlei.com/v1/auth/token', {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
+        Origin: 'https://pan.xunlei.com',
+        Referer: 'https://pan.xunlei.com/',
+      },
       body: { client_id: this.clientId, grant_type: 'refresh_token', refresh_token: refresh },
     });
     const access = res.data?.access_token || res.data?.data?.access_token;
@@ -499,11 +517,55 @@ export class XunleiPan implements PanAdapter {
     return access || '';
   }
 
-  private headers(token: string) {
+  /** 对齐原版：列表接口需要 x-captcha-token */
+  private async getCaptchaToken(): Promise<string> {
+    if (this.env) {
+      const cached = await this.env.KV.get('xunlei:captcha', 'json');
+      if (cached && (cached as any).expires_at > Date.now() / 1000) return (cached as any).captcha_token;
+    }
+    const res = await httpJson('https://xluser-ssl.xunlei.com/v1/shield/captcha/init', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: {
+        client_id: this.clientId,
+        action: 'get:/drive/v1/share',
+        device_id: this.deviceId,
+        meta: {
+          username: '',
+          phone_number: '',
+          email: '',
+          package_name: 'pan.xunlei.com',
+          client_version: '1.45.0',
+          captcha_sign: '1.fe2108ad808a74c9ac0243309242726c',
+          timestamp: '1645241033384',
+          user_id: '0',
+        },
+      },
+    });
+    const token = res.data?.captcha_token || res.data?.data?.captcha_token || '';
+    if (token && this.env) {
+      const ttl = Math.max(30, Number(res.data?.expires_in || res.data?.data?.expires_in || 300) - 10);
+      await this.env.KV.put(
+        'xunlei:captcha',
+        JSON.stringify({ captcha_token: token, expires_at: Math.floor(Date.now() / 1000) + ttl }),
+        { expirationTtl: ttl }
+      );
+    }
+    return token;
+  }
+
+  private headers(token: string, captcha = '') {
     return {
+      Accept: '*/*',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
       Authorization: `Bearer ${token}`,
+      Origin: 'https://pan.xunlei.com',
+      Referer: 'https://pan.xunlei.com/',
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36',
       'x-client-id': this.clientId,
-      'Content-Type': 'application/json',
+      'x-device-id': this.deviceId,
+      ...(captcha ? { 'x-captcha-token': captcha } : {}),
     };
   }
 
@@ -511,22 +573,30 @@ export class XunleiPan implements PanAdapter {
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录，请检查 refresh_token(xunlei_cookie)' };
     try {
+      const captcha = await this.getCaptchaToken();
       const parent =
         pdirFid === 0 || pdirFid === '0' || pdirFid === 'root' || pdirFid === '' || pdirFid == null
           ? ''
           : String(pdirFid);
       const res = await httpJson('https://api-pan.xunlei.com/drive/v1/files', {
         method: 'GET',
-        headers: this.headers(token),
-        query: { parent_id: parent, limit: 100 },
+        headers: this.headers(token, captcha),
+        query: {
+          parent_id: parent,
+          filters: '{"phase":{"eq":"PHASE_TYPE_COMPLETE"},"trashed":{"eq":false}}',
+          with_audit: 'true',
+          thumbnail_size: 'SIZE_SMALL',
+          limit: 100,
+        },
       });
       if (res.status >= 400 || res.data?.error || res.data?.error_code) {
         return {
           code: 500,
-          message: res.data?.error_description || res.data?.message || res.data?.error || `迅雷接口错误(${res.status})`,
+          message:
+            res.data?.error_description || res.data?.message || res.data?.error || `迅雷接口错误(${res.status})`,
         };
       }
-      const list = res.data?.files || res.data?.data?.files || res.data?.data || [];
+      const list = res.data?.files || res.data?.data?.files || [];
       return { code: 200, message: '获取成功', data: Array.isArray(list) ? list : [] } as any;
     } catch (e: any) {
       return { code: 500, message: e?.message || '迅雷目录获取失败' };
@@ -536,15 +606,16 @@ export class XunleiPan implements PanAdapter {
   async deletepdirFid(filelist: string[]) {
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录' };
+    const captcha = await this.getCaptchaToken();
     await httpJson('https://api-pan.xunlei.com/drive/v1/files/batch_delete', {
       method: 'POST',
-      headers: this.headers(token),
+      headers: { ...this.headers(token, captcha), 'Content-Type': 'application/json' },
       body: { ids: filelist, space: '' },
     }).catch(async () => {
       for (const id of filelist) {
         await httpJson(`https://api-pan.xunlei.com/drive/v1/files/${id}`, {
           method: 'DELETE',
-          headers: this.headers(token),
+          headers: this.headers(token, captcha),
         });
       }
     });
@@ -561,10 +632,11 @@ export class XunleiPan implements PanAdapter {
 
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录，请检查 refresh_token(xunlei_cookie)' };
+    const captcha = await this.getCaptchaToken();
 
     const shareRes = await httpJson('https://api-pan.xunlei.com/drive/v1/share', {
       method: 'GET',
-      headers: this.headers(token),
+      headers: this.headers(token, captcha),
       query: {
         share_id: shareId,
         pass_code: code,
@@ -594,7 +666,7 @@ export class XunleiPan implements PanAdapter {
     const ids = Array.isArray(info?.files) ? info.files.map((f: any) => f.id).filter(Boolean) : [];
     const restoreRes = await httpJson('https://api-pan.xunlei.com/drive/v1/share/restore', {
       method: 'POST',
-      headers: this.headers(token),
+      headers: { ...this.headers(token, captcha), 'Content-Type': 'application/json' },
       body: {
         parent_id: parent || '',
         share_id: shareId,
@@ -617,7 +689,7 @@ export class XunleiPan implements PanAdapter {
       for (let i = 0; i < 20; i++) {
         const task = await httpJson(`https://api-pan.xunlei.com/drive/v1/tasks/${taskId}`, {
           method: 'GET',
-          headers: this.headers(token),
+          headers: this.headers(token, captcha),
         });
         taskData = task.data || {};
         if (Number(taskData.progress) === 100) break;
@@ -671,7 +743,7 @@ export class XunleiPan implements PanAdapter {
     const expirationDays = this.cfg.expired_type === 2 ? '2' : '-1';
     const shareCreate = await httpJson('https://api-pan.xunlei.com/drive/v1/share', {
       method: 'POST',
-      headers: this.headers(token),
+      headers: { ...this.headers(token, captcha), 'Content-Type': 'application/json' },
       body: {
         file_ids: fileIds.length ? fileIds : ids,
         share_to: 'copy',

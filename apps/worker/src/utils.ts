@@ -56,6 +56,10 @@ export async function httpJson(
       body = JSON.stringify(options.body);
       headers['Content-Type'] = headers['Content-Type'] || 'application/json;charset=UTF-8';
     }
+  } else if (method === 'GET' || method === 'HEAD') {
+    // GET 去掉 content-type，避免部分网盘接口异常
+    delete headers['Content-Type'];
+    delete headers['content-type'];
   }
   const res = await fetch(finalUrl, { method, headers, body });
   const text = await res.text();

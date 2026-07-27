@@ -64,12 +64,18 @@ const fidKey: Record<string, string> = {
   '4': 'xunlei_file',
 };
 
+function rootOf(tab: string) {
+  const t = tabs.find((x) => x.key === tab)!;
+  return t.root === '' ? '0' : t.root;
+}
+
 export function Deposit() {
   const [conf, setConf] = useState<Record<string, string>>({});
   const [tab, setTab] = useState('0');
   const [files, setFiles] = useState<any[]>([]);
   const [pdir, setPdir] = useState('0');
   const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState('');
 
   const cur = tabs.find((t) => t.key === tab)!;
 
@@ -82,10 +88,10 @@ export function Deposit() {
   }, []);
 
   const switchTab = (key: string) => {
-    const t = tabs.find((x) => x.key === key)!;
     setTab(key);
     setFiles([]);
-    setPdir(t.root);
+    setHint('');
+    setPdir(rootOf(key));
   };
 
   const save = async () => {
@@ -100,34 +106,36 @@ export function Deposit() {
     }
   };
 
-  const checkAccount = async () => {
+  /** 拉取并展示目录（账号检测 / 加载共用） */
+  const fetchDirs = async (dir?: string, opts?: { silentOk?: boolean }) => {
+    const target = dir ?? rootOf(tab);
     setBusy(true);
+    setHint('');
     try {
-      const root = cur.root === '' ? '0' : cur.root;
-      const j = await api.get(`/admin/source/getFiles?type=${tab}&pdir_fid=${encodeURIComponent(root)}`);
-      if (j.code === 200) {
-        alert(`已登录，${cur.label} cookie/token 可用`);
-        setFiles(j.data || []);
-        setPdir(root);
-      } else {
-        alert(j.message || '检测失败');
+      const j = await api.get(`/admin/source/getFiles?type=${tab}&pdir_fid=${encodeURIComponent(target)}`);
+      if (j.code !== 200) {
+        setFiles([]);
+        setHint(j.message || '加载失败');
+        alert(j.message || '加载失败');
+        return false;
       }
+      const list = Array.isArray(j.data) ? j.data : [];
+      setFiles(list);
+      setPdir(target);
+      if (!list.length) {
+        setHint('账号可用，但当前目录为空。可换目录，或确认 Cookie 对应账号下确有文件夹。');
+        if (!opts?.silentOk) alert('账号可用，但当前目录为空');
+      } else if (!opts?.silentOk) {
+        alert(`已登录，共 ${list.length} 项（文件夹已排在前面）`);
+      }
+      return true;
     } finally {
       setBusy(false);
     }
   };
 
-  const loadFiles = async (dir = pdir) => {
-    setBusy(true);
-    try {
-      const j = await api.get(`/admin/source/getFiles?type=${tab}&pdir_fid=${encodeURIComponent(dir)}`);
-      if (j.code !== 200) return alert(j.message || '加载失败');
-      setFiles(j.data || []);
-      setPdir(dir);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const checkAccount = () => fetchDirs(rootOf(tab));
+  const loadFiles = (dir = pdir) => fetchDirs(dir, { silentOk: true });
 
   const pickFid = (fid: string, asTemp = false) => {
     const key = asTemp ? fidKey[tab]?.replace('_file', '_file_time') || fidKey[tab] : fidKey[tab];
@@ -167,12 +175,12 @@ export function Deposit() {
               )}
               {k.includes('cookie') || k === 'Authorization' || k === 'xunlei_cookie' ? (
                 <button type="button" className="plain" disabled={busy} onClick={checkAccount}>
-                  账号检测
+                  {busy ? '检测中…' : '账号检测'}
                 </button>
               ) : null}
             </div>
             {(k.includes('cookie') || k === 'Authorization' || k === 'xunlei_cookie') && (
-              <p className="tips">修改后请先保存，再点账号检测 / 浏览目录</p>
+              <p className="tips">修改后请先保存，再点「账号检测」（会自动加载下方目录列表）</p>
             )}
           </div>
         ))}
@@ -187,7 +195,10 @@ export function Deposit() {
       </div>
 
       <div className="card">
-        <div className="card-hd">浏览网盘目录（点「选用」填入上方目录）</div>
+        <div className="card-hd">
+          浏览网盘目录（点「选用」填入上方目录）
+          {files.length ? <span className="muted"> · 当前 {files.length} 项</span> : null}
+        </div>
         <div className="row">
           <input
             style={{ maxWidth: 220 }}
@@ -196,12 +207,13 @@ export function Deposit() {
             placeholder={tab === '1' ? 'root' : tab === '2' ? '/' : '父目录 fid'}
           />
           <button type="button" className="plain" disabled={busy} onClick={() => loadFiles(pdir)}>
-            加载
+            {busy ? '加载中…' : '加载'}
           </button>
-          <button type="button" className="plain" disabled={busy} onClick={() => loadFiles(cur.root === '' ? '0' : cur.root)}>
+          <button type="button" className="plain" disabled={busy} onClick={() => loadFiles(rootOf(tab))}>
             回到根目录
           </button>
         </div>
+        {hint ? <p className="tips">{hint}</p> : null}
         <table>
           <thead>
             <tr>
@@ -214,15 +226,16 @@ export function Deposit() {
             {files.map((f, i) => {
               const name = f._name || f.file_name || f.server_filename || f.name || '-';
               const fid = String(f._id || f.fid || f.fs_id || f.id || f.file_id || f.path || '');
+              const isDir = f._is_dir;
               return (
-                <tr key={i}>
+                <tr key={fid || i}>
                   <td>
-                    {f._is_dir ? '📁 ' : ''}
+                    {isDir ? '📁 ' : '📄 '}
                     {name}
                   </td>
                   <td style={{ wordBreak: 'break-all' }}>{fid}</td>
                   <td>
-                    {f._is_dir !== false && (
+                    {isDir && (
                       <button type="button" className="link-btn" onClick={() => loadFiles(fid)}>
                         进入
                       </button>
@@ -240,7 +253,7 @@ export function Deposit() {
             {!files.length && (
               <tr>
                 <td colSpan={3} style={{ textAlign: 'center', color: '#909399' }}>
-                  暂无目录，请先保存 Cookie 后点「账号检测」或「加载」
+                  {busy ? '正在加载目录…' : '暂无目录。请先保存 Cookie，再点上方「账号检测」或「加载」'}
                 </td>
               </tr>
             )}
