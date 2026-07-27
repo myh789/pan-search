@@ -12,38 +12,47 @@ export function Dashboard() {
       setInfo(me.data);
       const s = await api.get('/admin/source/getList?page=1&page_size=1');
       const a = await api.get('/admin/api_list/getList');
-      const f = await api.get('/admin/feedback/getList');
+      const f = await api.get('/admin/feedback/getList?page=1&page_size=1');
       setStats({
         sources: s.data?.total || 0,
         lines: a.data?.items?.length || 0,
-        feedback: f.data?.items?.length || 0,
+        feedback: f.data?.total || f.data?.items?.length || 0,
       });
     })();
   }, []);
 
   return (
-    <div>
-      <h2>概况</h2>
-      <div className="card">
+    <div className="home-dash">
+      <div className="home-hero card">
+        <div className="home-logo">PS</div>
+        <p className="muted">@资源管理系统</p>
         <p>
-          欢迎，{info?.admin_name || info?.admin_account}（组 {info?.admin_group}）
+          欢迎，{info?.admin_name || info?.admin_account || '管理员'}
+          {info?.admin_group ? `（组 ${info.admin_group}）` : ''}
         </p>
-        <div className="row">
-          <div className="card" style={{ flex: 1 }}>
-            <div className="muted">资源数</div>
-            <strong style={{ fontSize: '1.6rem' }}>{stats.sources}</strong>
-          </div>
-          <div className="card" style={{ flex: 1 }}>
-            <div className="muted">搜索线路</div>
-            <strong style={{ fontSize: '1.6rem' }}>{stats.lines}</strong>
-          </div>
-          <div className="card" style={{ flex: 1 }}>
-            <div className="muted">用户需求</div>
-            <strong style={{ fontSize: '1.6rem' }}>{stats.feedback}</strong>
-          </div>
+      </div>
+
+      <div className="row">
+        <div className="card" style={{ flex: 1 }}>
+          <div className="muted">资源数</div>
+          <strong style={{ fontSize: '1.6rem' }}>{stats.sources}</strong>
         </div>
+        <div className="card" style={{ flex: 1 }}>
+          <div className="muted">搜索线路</div>
+          <strong style={{ fontSize: '1.6rem' }}>{stats.lines}</strong>
+        </div>
+        <div className="card" style={{ flex: 1 }}>
+          <div className="muted">用户需求</div>
+          <strong style={{ fontSize: '1.6rem' }}>{stats.feedback}</strong>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-hd">快捷操作</div>
         <div className="row">
           <button
+            type="button"
+            className="plain"
             onClick={async () => {
               await api.postForm('/admin/system/clean', {});
               alert('缓存已清理');
@@ -51,17 +60,17 @@ export function Dashboard() {
           >
             清理缓存
           </button>
-          <a href="/" target="_blank" rel="noreferrer">
+          <a className="plain" style={{ padding: '8px 16px', border: '1px solid var(--line-strong)', borderRadius: 4 }} href="/" target="_blank" rel="noreferrer">
             打开前台
           </a>
-          <a href="/health" target="_blank" rel="noreferrer">
-            健康检查
+          <a className="plain" style={{ padding: '8px 16px', border: '1px solid var(--line-strong)', borderRadius: 4 }} href="/qfadmin/feedback" >
+            查看用户需求
           </a>
         </div>
       </div>
 
       <div className="card">
-        <h3>修改密码</h3>
+        <div className="card-hd">修改密码</div>
         <div className="row">
           <input
             type="password"
@@ -78,6 +87,7 @@ export function Dashboard() {
             style={{ maxWidth: 200 }}
           />
           <button
+            type="button"
             onClick={async () => {
               const j = await api.postForm('/admin/admin/motifyPassword', pwd);
               alert(j.message);
@@ -87,7 +97,7 @@ export function Dashboard() {
             保存密码
           </button>
         </div>
-        <p className="muted">上线后请立即修改默认密码，并在「基础设置」中修改 api_key。</p>
+        <p className="tips">上线后请立即修改默认密码，并在「基础设置」中修改 api_key。</p>
       </div>
     </div>
   );
