@@ -7,6 +7,8 @@ compatibility_flags = ["nodejs_compat"]
 directory = "apps/admin/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+# Avoid /index.html → / redirects that would bounce /qfadmin/ to the public homepage
+html_handling = "none"
 run_worker_first = true
 
 [[d1_databases]]
