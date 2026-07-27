@@ -24,6 +24,41 @@ export function determineIsType(url: string): PanType {
   return 0;
 }
 
+/** Align with PHP parsePanLinks: one link per line, optional title/code. */
+export function parsePanLinks(input: string): Array<{ url: string; title: string; code: string }> {
+  const lines = input
+    .split(/\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const out: Array<{ url: string; title: string; code: string }> = [];
+  for (const item of lines) {
+    const baiduFmt = item.match(/链接:?\s*(https?:\/\/[^\s]+)\s*提取码:?\s*([a-zA-Z0-9]{4})/i);
+    if (baiduFmt) {
+      let url = baiduFmt[1].trim();
+      const code = baiduFmt[2].trim();
+      if (code && !/[?&]pwd=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'pwd=' + code;
+      out.push({ url, title: '', code });
+      continue;
+    }
+    const urlMatch = item.match(/https?:\/\/[^\s]+/);
+    if (!urlMatch) continue;
+    let url = urlMatch[0].replace(/[，,]+$/, '');
+    let code = '';
+    const pwd = item.match(/[?&]pwd=([^,\s&]+)/i);
+    if (pwd) code = pwd[1];
+    else {
+      const comma = item.match(/,\s*([a-zA-Z0-9]{4})\s*$/);
+      if (comma) {
+        code = comma[1];
+        if (!/[?&]pwd=/.test(url)) url += (url.includes('?') ? '&' : '?') + 'pwd=' + code;
+      }
+    }
+    const before = item.slice(0, item.indexOf(urlMatch[0])).trim().replace(/[:：]\s*$/, '');
+    out.push({ url, title: before, code });
+  }
+  return out;
+}
+
 export function extractPwdId(url: string): string | null {
   const clean = url.split('?entry=')[0] ?? url;
   const idx = clean.indexOf('s/');

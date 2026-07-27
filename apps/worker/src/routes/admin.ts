@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env, AppVariables } from '../env';
-import { jok, jerr } from '@pan-search/shared';
+import { jok, jerr, parsePanLinks, determineIsType } from '@pan-search/shared';
 import {
   createCaptcha,
   verifyCaptcha,
@@ -136,12 +136,17 @@ adminRoutes.post('/system/clean', async (c) => {
 adminRoutes.get('/source/getList', async (c) => {
   const page = Number(c.req.query('page') || 1);
   const pageSize = Number(c.req.query('page_size') || 20);
-  const title = c.req.query('title') || '';
+  const title = c.req.query('title') || c.req.query('keyword') || '';
+  const categoryId = Number(c.req.query('source_category_id') || 0);
   const where = ['is_delete = 0'];
   const params: any[] = [];
   if (title) {
     where.push('title LIKE ?');
     params.push(`%${title}%`);
+  }
+  if (categoryId) {
+    where.push('source_category_id = ?');
+    params.push(categoryId);
   }
   const whereSql = `WHERE ${where.join(' AND ')}`;
   const total = await c.env.DB.prepare(`SELECT COUNT(*) as c FROM source ${whereSql}`).bind(...params).first<{ c: number }>();
@@ -151,6 +156,15 @@ adminRoutes.get('/source/getList', async (c) => {
     .bind(...params, pageSize, (page - 1) * pageSize)
     .all();
   return c.json(jok('ok', { items: items.results || [], total: total?.c || 0, page, page_size: pageSize }));
+});
+
+adminRoutes.post('/source/detail', async (c) => {
+  const body = await c.req.parseBody();
+  const id = Number(body.source_id);
+  if (!id) return c.json(jerr('缺少ID'));
+  const row = await c.env.DB.prepare('SELECT * FROM source WHERE source_id = ? AND is_delete = 0').bind(id).first();
+  if (!row) return c.json(jerr('资源不存在', 404));
+  return c.json(jok('ok', row));
 });
 
 adminRoutes.post('/source/add', async (c) => {
@@ -206,24 +220,53 @@ adminRoutes.post('/source/delete', async (c) => {
 
 adminRoutes.post('/source/transfer', async (c) => {
   const body = await c.req.parseBody();
-  const urls = String(body.urls || body.url || '')
-    .split(/\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const type = Number(body.type || 2); // 1=直接导入(不转存) 2=转存分享导入
+  const urlsRaw = String(body.urls || body.url || '');
+  if (!urlsRaw.trim()) return c.json(jerr('参数不能为空'));
+  const parsed = parsePanLinks(urlsRaw);
+  if (!parsed.length) return c.json(jerr('未解析到有效链接'));
+  if (parsed.length > 500) return c.json(jerr('一次最多 500 条'));
   const categoryId = Number(body.source_category_id || 0);
-  const logId = await createSourceLog(c.env, '批量转存他人链接', urls.length);
-  const items = urls.map((line) => {
-    const parts = line.split(/\s+/);
-    return { url: parts[0], code: parts[1], title: parts.slice(2).join(' ') || undefined, categoryId };
+  const isImport = type === 1;
+  const logId = await createSourceLog(c.env, isImport ? '批量转入链接' : '批量转存他人链接', parsed.length);
+  const items = parsed.map((x) => ({
+    url: x.url,
+    code: x.code || undefined,
+    title: x.title || undefined,
+    categoryId,
+  }));
+  await c.env.TRANSFER_QUEUE.send({
+    type: isImport ? 'import_batch' : 'transfer_batch',
+    logId,
+    categoryId,
+    items,
   });
-  await c.env.TRANSFER_QUEUE.send({ type: 'transfer_batch', logId, categoryId, items });
-  return c.json(jok('已提交任务', { logId }));
+  return c.json(jok('已提交任务，稍后查看结果', { logId, count: parsed.length, mode: isImport ? 'import' : 'transfer' }));
 });
 
 adminRoutes.post('/source/imports', async (c) => {
   const body = await c.req.json<{ items?: any[]; source_category_id?: number; mode?: string }>().catch(() => null);
   if (!body?.items?.length) return c.json(jerr('无导入数据（请前端 SheetJS 解析后提交 items）'));
   const categoryId = Number(body.source_category_id || 0);
+  // excel / direct: 仅入库不转存不校验（对齐原版表格导入）
+  if (!body.mode || body.mode === 'excel' || body.mode === 'direct') {
+    let n = 0;
+    for (const x of body.items) {
+      const url = String(x.url || '').trim();
+      if (!url) continue;
+      const title = String(x.title || '').replace(/^\d+[\.\-]/, '').trim() || url;
+      await insertSource(c.env, {
+        title,
+        url,
+        is_type: determineIsType(url),
+        code: String(x.code || ''),
+        source_category_id: Number(x.source_category_id || categoryId),
+      });
+      n++;
+    }
+    if (!n) return c.json(jerr('无可导入的资源，请检查表格格式'));
+    return c.json(jok(`导入成功${n}个资源`, { count: n }));
+  }
   const mode = body.mode === 'import' ? 'import_batch' : 'transfer_batch';
   const logId = await createSourceLog(c.env, mode === 'import_batch' ? '批量转入链接' : '批量转存他人链接', body.items.length);
   await c.env.TRANSFER_QUEUE.send({

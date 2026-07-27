@@ -40,27 +40,28 @@ export function Login() {
 
   return (
     <div className="login-wrap">
-      <form className="card login-card" onSubmit={submit}>
-        <h2>管理后台登录</h2>
+      <form className="login-card" onSubmit={submit}>
+        <div className="brand">后台管理系统</div>
+        <h2>欢迎登录</h2>
         <div className="field">
           <label>账号</label>
-          <input value={account} onChange={(e) => setAccount(e.target.value)} />
+          <input value={account} onChange={(e) => setAccount(e.target.value)} placeholder="请输入账号" />
         </div>
         <div className="field">
           <label>密码</label>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" />
         </div>
         <div className="field">
           <label>验证码</label>
           <div className="captcha">
-            <input value={captcha} onChange={(e) => setCaptcha(e.target.value)} />
+            <input value={captcha} onChange={(e) => setCaptcha(e.target.value)} placeholder="验证码" />
             {cap && <img src={cap.image} alt="captcha" onClick={loadCap} title="点击刷新" />}
           </div>
         </div>
-        {err && <p style={{ color: 'var(--danger)' }}>{err}</p>}
-        <button style={{ width: '100%' }}>登录</button>
-        <p className="muted" style={{ marginTop: 12 }}>
-          默认账号 admin / Admin123!
+        {err && <p style={{ color: 'var(--danger)', marginTop: 0 }}>{err}</p>}
+        <button style={{ width: '100%', marginTop: 8 }}>登录</button>
+        <p className="muted" style={{ marginTop: 14, marginBottom: 0, fontSize: 12 }}>
+          默认账号 admin / Admin123!（上线请立即修改）
         </p>
       </form>
     </div>
