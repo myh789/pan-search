@@ -74,6 +74,12 @@ export function Sources() {
       });
       if (cat) q.set('source_category_id', String(cat));
       const j = await api.get(`/admin/source/getList?${q}`);
+      if (j.code !== 200) {
+        setItems([]);
+        setTotal(0);
+        alert(j.message || '加载资源列表失败（若刚上线置顶功能，请先执行 D1 迁移 0006）');
+        return;
+      }
       setItems(j.data?.items || []);
       setTotal(j.data?.total || 0);
       setSelected([]);

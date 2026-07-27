@@ -211,11 +211,21 @@ adminRoutes.get('/source/getList', async (c) => {
   }
   const whereSql = `WHERE ${where.join(' AND ')}`;
   const total = await c.env.DB.prepare(`SELECT COUNT(*) as c FROM source ${whereSql}`).bind(...params).first<{ c: number }>();
-  const items = await c.env.DB.prepare(
-    `SELECT * FROM source ${whereSql} ORDER BY is_top DESC, source_id DESC LIMIT ? OFFSET ?`
-  )
-    .bind(...params, pageSize, (page - 1) * pageSize)
-    .all();
+  let items: D1Result<any>;
+  try {
+    items = await c.env.DB.prepare(
+      `SELECT * FROM source ${whereSql} ORDER BY is_top DESC, source_id DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...params, pageSize, (page - 1) * pageSize)
+      .all();
+  } catch {
+    // 未执行 0006 迁移时无 is_top 列，回退避免后台空白
+    items = await c.env.DB.prepare(
+      `SELECT * FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...params, pageSize, (page - 1) * pageSize)
+      .all();
+  }
   return c.json(jok('ok', { items: items.results || [], total: total?.c || 0, page, page_size: pageSize }));
 });
 

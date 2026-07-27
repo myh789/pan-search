@@ -1,6 +1,8 @@
 # 功能对齐与已知限制
 
-完整功能对照表见 **[FEATURES.md](./FEATURES.md)**（前台 / 转存 / Open API / 后台逐项清单）。
+> 更新日期：2026-07-27
+
+完整功能对照表见 **[FEATURES.md](./FEATURES.md)**（前台 / 转存 / Open API / 后台 / 置顶 / AI 逐项清单）。
 
 ## 冒烟命令
 
@@ -18,16 +20,17 @@ npm run smoke:sitemap
 |------|------|
 | 前台首页 / 搜索 / 详情 / sitemap（原版 DOM + CSS，侧栏热榜 / 相关资源 / 全网搜 UX） | ✅ |
 | 本地搜索三模式、屏蔽词、SEO 伪静态 `.html`、iconfont、扫码弹窗声明 | ✅ |
-| 全网搜 SSE（api/html/tg/kk）+ 加密链 + save_url | ✅ |
+| 全网搜 SSE（api/html/tg/kk）+ 加密链 + save_url（含 urldecode） | ✅ |
+| 临时资源 TTL 可配（`temp_source_ttl`，默认 30 分钟） | ✅ |
 | 后台布局：顶栏「概况/资源/系统/配置」+ 左侧子菜单 + 用户下拉 | ✅ |
-| 后台资源：添加/编辑/置顶/AI填充/批量删除/表格导入/批量导入（直接入库 / 转存分享） | ✅ |
-| 分类 / 线路 / 账号 / 附件 / 用户组 / 改密 / 改资料 / 清缓存 / 访问日志 | ✅ |
+| 后台资源：添加/编辑/**置顶**/批量删除/表格导入/批量导入（直接入库 / 转存分享） | ✅ |
+| **Agnes AI** 一键填充关键词标签 / 资源介绍（已有不覆盖） | ✅ |
+| 分类 / 线路（含推荐预设）/ 账号 / 附件 / 用户组 / 改密 / 改资料 / 清缓存 / 访问日志 | ✅ |
 | **网盘转存：夸克、UC、百度、阿里、迅雷（转存后重新分享）** | ✅ |
 | **Open API `/api/open/transfer` 默认同步返回分享链**（`async=1` 才进队列） | ✅ |
 | Cron、CORS、`/health`、`robots.txt` | ✅ |
-| Agnes AI 智能填充关键词标签 / 资源介绍（已有不覆盖） | ✅ |
 | 微信 / Chatbot 回调入口 | ⚠️ 可用但能力简化 |
-| D1 读优化：概况 stats KV、会话 KV、配置/分类/线路缓存、同请求 conf 复用、bootstrap KV 短路 | ✅ |
+| D1 读优化：stats / conf / 分类 / 线路 KV、同请求 conf 复用、bootstrap 短路 | ✅ |
 
 ## 转存说明（核心）
 
@@ -42,6 +45,15 @@ npm run smoke:sitemap
 后台「批量导入 → 转存分享导入」与 Open API 均走同一套 `transferUrl`。
 
 Open API 字段：`api_key`、`url`、`code`、`isType`（1=只校验）、`expired_type`、`isSave`（1=入库）、可选 `async=1` 异步队列。
+
+## AI 填充（CF 增强）
+
+| 项 | 说明 |
+|----|------|
+| 模型 | 默认 `agnes-2.5-flash`（[文档](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash)） |
+| 配置位置 | 基础设置 → **AI设置**；或 Secret `AGNES_API_KEY` |
+| 行为 | 仅补空的 `description` / `vod_content`；批量上限 20 |
+| API | `POST /admin/source/aiFill` |
 
 ## 还缺 / 偏弱
 
@@ -62,5 +74,16 @@ Open API 字段：`api_key`、`url`、`code`、`isType`（1=只校验）、`expi
 | `api_key` | `change-me` | 基础设置修改 |
 | `ENCRYPT_KEY` | 示例值 | vars/secret 修改 |
 | Agnes AI | 未配置 | 基础设置 → AI设置，或 `wrangler secret put AGNES_API_KEY` |
+
+## 近期迁移（上线前 apply）
+
+| 文件 | 内容 |
+|------|------|
+| `0005_temp_source_ttl.sql` | 临时资源保留分钟数 |
+| `0006_source_top_ai.sql` | `is_top` + AI 配置项 |
+
+```bash
+npx wrangler d1 migrations apply pan-search --remote
+```
 
 部署步骤见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)。

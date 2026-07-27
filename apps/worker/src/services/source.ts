@@ -71,12 +71,23 @@ export async function getSourceList(env: Env, conf: Record<string, string>, q: S
     .bind(...params)
     .first<{ c: number }>();
   const total = countRow?.c || 0;
-  const items = await env.DB.prepare(
-    `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
-     FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
-  )
-    .bind(...params, pageSize, offset)
-    .all<any>();
+  let items: D1Result<any>;
+  try {
+    items = await env.DB.prepare(
+      `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+       FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
+    )
+      .bind(...params, pageSize, offset)
+      .all<any>();
+  } catch {
+    // 未执行 0006 时无 is_top，回退排序
+    items = await env.DB.prepare(
+      `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+       FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
+    )
+      .bind(...params, pageSize, offset)
+      .all<any>();
+  }
 
   return {
     total_result: total,

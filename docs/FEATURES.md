@@ -1,8 +1,9 @@
 # 功能清单与对齐对照（ThinkPHP 原版 ↔ Cloudflare 重写版）
 
-> 更新日期见仓库；部署见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)，限制摘要见 [PARITY.md](./PARITY.md)。
+> 更新日期：2026-07-27  
+> 部署见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)，限制摘要见 [PARITY.md](./PARITY.md)。
 
-图例：✅ 已对齐　⚠️ 部分可用　❌ 未做 / 占位
+图例：✅ 已对齐　⚠️ 部分可用　❌ 未做 / 占位　— 原版无 / CF 增强
 
 ---
 
@@ -10,14 +11,15 @@
 
 | 功能 | 原版 | CF | 说明 |
 |------|------|----|------|
-| 首页（排行 / 最新 / 搜索框） | ✅ | ✅ | DOM/CSS 对齐原版 |
-| 本地搜索列表 `/s/关键词.html` | ✅ | ✅ | 侧栏热榜、筛选、高亮、分页 |
+| 首页（排行 / 最新 / 搜索框） | ✅ | ✅ | DOM/CSS 对齐原版；仅「最新」时居中；榜单最多 10 条 |
+| 本地搜索列表 `/s/关键词.html` | ✅ | ✅ | 侧栏热榜、筛选、高亮、分页；**置顶资源优先** |
 | 资源详情 `/d/id.html` | ✅ | ✅ | 相关资源 + 侧栏热榜 |
 | 搜索模式：精准 / 模糊 / 分词 | ✅ | ✅ | |
 | 关键词屏蔽 | ✅ | ✅ | el-alert 违规提示 |
 | 全网搜 SSE（api/html/tg/kk） | ✅ | ✅ | Qloading / Ebox / btns2 |
-| 全网搜加密链 + 获取链接 | ✅ | ✅ | dialogUrlBox + 声明 |
+| 全网搜加密链 + 获取链接 | ✅ | ✅ | 后端 `urldecode`；弹窗「链接安全检查中」+ 打开/复制 |
 | 全网搜转存 / 直链模式 | ✅ | ✅ | |
+| 临时资源自动清理 | ✅ | ✅ | 可配 `temp_source_ttl`（分钟，默认 30） |
 | 提交用户需求 | ✅ | ✅ | |
 | sitemap.xml / robots.txt | ✅ | ✅ | 页脚含网站地图 |
 | 健康检查 `/health` | — | ✅ | CF 新增 |
@@ -86,10 +88,11 @@
 | | 分类全部转存 | ✅ | ✅ |
 | **资源 → 分类管理** | 增改删、开关（本地/日更/前台）、图标 | ✅ | ✅ |
 | **资源 → 接口配置** | 线路 CRUD、开关、试搜 | ✅ | ✅ |
+| | 推荐线路预设（PanSou 等） | — | ✅ |
 | **资源 → 账号管理** | 夸克/阿里/百度/UC/迅雷 Tab、目录浏览 | ✅ | ✅ |
 | **资源 → 资源日志** | 进度 / 状态 / 删除 | ✅ | ✅ |
 | **资源 → 用户需求** | 列表 / 删除 / 批量删 | ✅ | ✅（删为增强） |
-| **系统 → 基础设置** | 分 Tab 配置、开关/颜色/图 | ✅ | ✅（含 AI设置 / Agnes） |
+| **系统 → 基础设置** | 分 Tab 配置、开关/颜色/图 | ✅ | ✅（含 **AI设置**） |
 | **系统 → 修改资料** | 昵称/姓名/邮箱等 | ✅ | ✅ |
 | **系统 → 修改密码** | 改密 | ✅ | ✅ |
 | **系统 → 清理缓存** | 清缓存 | ✅ | ✅ |
@@ -103,25 +106,61 @@
 
 ---
 
-## 五、后台 API（管理端）
+## 五、CF 增强：置顶与 AI 填充
 
-登录验证码、logout、getMyInfo、改密、改资料、conf 读写、source CRUD/置顶/AI填充/导入/转存/getFiles、分类、api_list、日志、feedback 删、附件 R2、管理员、用户组授权、node 列表、访问日志列表 — **均已提供**（参数/菜单 CRUD 除外）。
+### 资源置顶
+
+- 字段：`source.is_top`（迁移 `0006_source_top_ai`）
+- 后台：资源管理行内「置顶 / 取消置顶」；标题旁「顶」标记
+- 排序：后台列表与前台本地搜索均为 `is_top DESC, source_id DESC`
+
+### Agnes AI 智能填充
+
+| 项 | 说明 |
+|----|------|
+| 入口 | 资源管理：行内「AI」、工具栏「AI 智能填充」、编辑弹窗「智能填充」 |
+| 写入字段 | 空的 `description`（关键词，一行一个）与空的 `vod_content`（介绍） |
+| 规则 | **已有内容不覆盖**；单次最多 20 条 |
+| 配置 | 基础设置 → **AI设置**：`ai_enabled` / `ai_base_url` / `ai_model` / `ai_api_key` |
+| 默认模型 | `agnes-2.5-flash`，Base URL `https://apihub.agnes-ai.com/v1` |
+| 密钥 | 后台填写，或 `wrangler secret put AGNES_API_KEY`（**Secret 优先**）；列表回传打码 |
+
+文档参考：[Agnes 2.5 Flash](https://agnes-ai.com/zh-Hans/docs/agnes-25-flash)
 
 ---
 
-## 六、建议后续（非阻塞建站）
+## 六、后台 API（管理端）
+
+登录验证码、logout、getMyInfo、改密、改资料、conf 读写、source CRUD / `toggleTop` / `aiFill` / 导入 / 转存 / getFiles、分类、api_list、日志、feedback 删、附件 R2、管理员、用户组授权、node 列表、访问日志列表 — **均已提供**（参数/菜单 CRUD 除外）。
+
+---
+
+## 七、D1 / KV 读优化（CF）
+
+| 策略 | 说明 |
+|------|------|
+| 站点 conf | KV `site:conf`，TTL 约 1 小时；写入后失效 |
+| 后台 conf 行 | KV 短缓存；敏感 `ai_api_key` 打码返回 |
+| 同请求复用 | 中间件 `c.set('conf')`，首页/搜索不重复读 |
+| Bootstrap | 管理员密码引导完成后 KV 短路，避免每请求查 D1 |
+| 概况统计 / 分类 / 线路 | 既有 KV 缓存 |
+
+---
+
+## 八、建议后续（非阻塞建站）
 
 1. 微信验签 + Chatbot AES/指令  
 2. 侧栏按用户组授权动态裁剪  
-3. 参数配置 / 菜单管理页（少用）  
+3. 参数配置 / 菜单管理页完整 CRUD  
 4. 非图片附件上传  
 
 ---
 
-## 七、上线检查
+## 九、上线检查
 
 - [ ] 改管理员密码、改 `api_key`、改加密 KEY/IV  
 - [ ] 账号管理至少配置夸克 Cookie + 目录  
 - [ ] 系统 → 基础设置 → **AI设置**：填 Agnes API Key（或 `wrangler secret put AGNES_API_KEY`）  
 - [ ] `/health`、前台搜索、后台批量导入、Open API 转存各测一次  
-- [ ] 应用迁移 `0006_source_top_ai`（置顶列 + AI 配置项）  
+- [ ] 迁移 `0005_temp_source_ttl`（临时资源分钟数）  
+- [ ] 迁移 `0006_source_top_ai`（置顶列 + AI 配置项）  

@@ -5,8 +5,9 @@
 
 相关说明：
 
-- [mysql-to-d1.md](./mysql-to-d1.md) — 旧站数据迁移  
+- [FEATURES.md](./FEATURES.md) — 功能清单对照（含置顶 / AI）  
 - [PARITY.md](./PARITY.md) — 功能对齐与已知限制  
+- [mysql-to-d1.md](./mysql-to-d1.md) — 旧站数据迁移  
 
 ---
 
@@ -150,6 +151,7 @@
 | `ADMIN_BOOTSTRAP_PASSWORD` | 你想用的初始管理员密码（仅数据库还是占位密码时生效） |
 | `ENCRYPT_KEY` | 与 `wrangler.toml` 里一致，或更强的随机串 |
 | `ENCRYPT_IV` | 正好 16 个字符 |
+| `AGNES_API_KEY` | （可选）Agnes AI 密钥；优先于后台「AI设置」里的 Key |
 
 若密钥已放进「机密」，建议把 `wrangler.toml` 的 `[vars]` 里明文 `ENCRYPT_KEY` / `ENCRYPT_IV` **删掉或改成占位**，避免两处不一致。
 
@@ -299,9 +301,27 @@ npm run deploy
 
 ### 基础设置
 
-按 Tab 切换「基础 / SEO / 前端模版 / 搜索 / 上传 / 其他」；开关类为分段按钮，颜色可点色盘，图片可上传。点 **保存配置** 只保存当前 Tab。
+按 Tab 切换「基础 / SEO / 前端模版 / 搜索 / **AI设置** / 微信 / 上传 / 其他」；开关类为分段按钮，颜色可点色盘，图片可上传。点 **保存配置** 只保存当前 Tab。
 
-部署或更新后，请在本机/远程执行一次数据库迁移（含 `0004_conf_content`），开关选项文案才会完整。
+**AI设置**（迁移 `0006` 后出现）：
+
+| 配置项 | 说明 |
+|--------|------|
+| 启用 AI 填充 | 关闭后资源管理「AI」按钮不可用 |
+| AI Base URL | 默认 `https://apihub.agnes-ai.com/v1` |
+| AI 模型 | 默认 `agnes-2.5-flash` |
+| AI API Key | Agnes 密钥；已保存时显示 `********`，不改请保持；也可用 `npx wrangler secret put AGNES_API_KEY`（Secret 优先） |
+
+**搜索设置**中可改 `temp_source_ttl`（临时资源保留分钟数，默认 30）。
+
+部署或更新后，请执行数据库迁移（至少含 `0004_conf_content`、`0005_temp_source_ttl`、`0006_source_top_ai`），开关文案与 AI/置顶能力才会完整。
+
+### 资源置顶与 AI 填充
+
+打开 **资源管理**：
+
+- **置顶 / 取消置顶**：置顶资源在后台列表与前台搜索靠前  
+- **AI / AI 智能填充**：按标题生成关键词标签与资源介绍；**已有内容不覆盖**；编辑弹窗也可点「智能填充」  
 
 ---
 
@@ -394,11 +414,17 @@ npx wrangler dev --port 8787
 **转存一直没结果**  
 到 Queues 确认消费者已挂上；看后台「资源日志」；付费计划更稳。
 
-**百度 / 阿里提示未完全移植**  
-完整转存优先用夸克、UC；百度、阿里目前偏目录与校验。
+**百度 / 阿里转存失败**  
+确认账号管理已填 Cookie/Token、目录，以及阿里 `ali_drive_id`；完整转存链路已实现，失败多为凭证或风控。
 
 **改了配置前台还是旧的**  
 后台点 **清理缓存**。
+
+**AI 填充提示未配置 Key**  
+基础设置 → AI设置 填写，或 `npx wrangler secret put AGNES_API_KEY`；并确认已 apply `0006` 迁移。
+
+**置顶按钮无效 / 无 is_top**  
+执行 `npx wrangler d1 migrations apply pan-search --remote`（含 `0006_source_top_ai`）。
 
 **本地开发时定时任务不跑**  
 正常；线上 Worker 的 Cron 才会按触发器跑。
@@ -419,7 +445,8 @@ npx wrangler dev --port 8787
 - [ ] 附件能上传，Logo 能显示  
 - [ ] 夸克目录能浏览  
 - [ ] 全网搜有内容刷出  
+- [ ] 资源管理：置顶生效；AI 填充能写空字段（已配置 Key）  
 - [ ] `/sitemap.xml` 里是正式域名  
 - [ ] 故意填错 `api_key` 会被拒绝  
 
-更细的对齐说明见 [PARITY.md](./PARITY.md)。
+更细对照见 [FEATURES.md](./FEATURES.md)、[PARITY.md](./PARITY.md)。

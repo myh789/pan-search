@@ -4,11 +4,13 @@
 
 > **Cloudflare 重写版**（Workers + D1 + KV + R2 + Queues）  
 > - 部署教程（点哪填哪）：[docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md)  
+> - 功能清单对照：[docs/FEATURES.md](docs/FEATURES.md)  
 > - 功能对齐 / 已知限制：[docs/PARITY.md](docs/PARITY.md)  
 > - 旧库迁移：[docs/mysql-to-d1.md](docs/mysql-to-d1.md)  
 > - 代码目录：`apps/worker`、`apps/admin`（原 ThinkPHP 代码仍保留作对照）
 >
-> 后台默认账号 `admin` / `Admin123!`（上线后请立刻改密码和 `api_key`）
+> 后台默认账号 `admin` / `Admin123!`（上线后请立刻改密码和 `api_key`）  
+> CF 版近期能力：**资源置顶**、**Agnes AI 一键填充关键词/介绍**、临时资源 TTL 可配置
 
 ---
 
