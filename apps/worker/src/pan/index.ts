@@ -1,25 +1,13 @@
 import type { Env } from '../env';
 import { httpJson, sleep } from '../utils';
 import { extractPwdId } from '@pan-search/shared';
+import { BaiduPan } from './baidu';
+import { AlipanPan } from './aliyun';
+import type { PanAdapter, TransferConfig, TransferResult } from './types';
 
-export type TransferConfig = {
-  url: string;
-  code?: string;
-  isType?: number;
-  expired_type?: number;
-  ad_fid?: string;
-  stoken?: string;
-};
-
-export type TransferResult =
-  | { code: 200; message: string; data: { title: string; share_url: string; fid?: any; code?: string; stoken?: string } }
-  | { code: number; message: string; data?: null };
-
-export interface PanAdapter {
-  getFiles(pdirFid?: string | number): Promise<TransferResult>;
-  transfer(pwdId: string): Promise<TransferResult>;
-  deletepdirFid(filelist: string[]): Promise<TransferResult>;
-}
+export type { TransferConfig, TransferResult, PanAdapter } from './types';
+export { BaiduPan } from './baidu';
+export { AlipanPan } from './aliyun';
 
 function quarkHeaders(cookie: string): Record<string, string> {
   return {
@@ -465,65 +453,14 @@ export class UcPan implements PanAdapter {
   }
 }
 
-export class BaiduPan implements PanAdapter {
-  constructor(
-    private conf: Record<string, string>,
-    private cfg: TransferConfig
-  ) {}
-
-  async getFiles(pdirFid: string | number = '/') {
-    const cookie = this.conf.baidu_cookie || '';
-    if (!cookie) return { code: 500, message: '未配置百度Cookie' };
-    const dir = pdirFid === 0 ? '/' : String(pdirFid);
-    const res = await httpJson('https://pan.baidu.com/api/list', {
-      method: 'GET',
-      cookie,
-      query: { dir, order: 'time', desc: 1, showempty: 0, web: 1, page: 1, num: 100, channel: 'chunlei', app_id: 250528 },
-    });
-    if (res.data?.errno && res.data.errno !== 0) return { code: 500, message: `百度错误:${res.data.errno}` };
-    return { code: 200, message: '获取成功', data: res.data?.list || [] } as any;
-  }
-
-  async deletepdirFid(filelist: string[]) {
-    const cookie = this.conf.baidu_cookie || '';
-    const res = await httpJson('https://pan.baidu.com/api/filemanager', {
-      method: 'POST',
-      cookie,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `opera=delete&filelist=${encodeURIComponent(JSON.stringify(filelist))}`,
-      query: { async: 2, onnest: 'fail', channel: 'chunlei', web: 1, app_id: 250528 },
-    });
-    return res.data?.errno === 0
-      ? { code: 200, message: 'ok', data: res.data }
-      : { code: 500, message: `删除失败:${res.data?.errno}` };
-  }
-
-  async transfer(pwdId: string): Promise<TransferResult> {
-    // Baidu full transfer is complex; support verify + best-effort transfer via share link passthrough when isType=1
-    if (this.cfg.isType === 1) {
-      return {
-        code: 200,
-        message: '检验成功',
-        data: { title: pwdId, share_url: this.cfg.url, code: this.cfg.code },
-      };
-    }
-    const cookie = this.conf.baidu_cookie || '';
-    if (!cookie) return { code: 500, message: '未配置百度Cookie' };
-    // Full Baidu transfer port is incomplete vs legacy BaiduWork;
-    // fail explicitly instead of fake-success.
-    return {
-      code: 500,
-      message: '百度完整转存尚未在 Cloudflare 版完全移植，请先用夸克/UC，或仅使用 isType=1 校验',
-    };
-  }
-}
-
 export class XunleiPan implements PanAdapter {
   constructor(
     private conf: Record<string, string>,
     private cfg: TransferConfig,
     private env?: Env
   ) {}
+
+  private clientId = 'Xqp0kJBXWhwaTpB6';
 
   private async getAccessToken(): Promise<string> {
     if (this.env) {
@@ -534,7 +471,7 @@ export class XunleiPan implements PanAdapter {
     if (!refresh) return '';
     const res = await httpJson('https://xluser-ssl.xunlei.com/v1/auth/token', {
       method: 'POST',
-      body: { client_id: 'Xqp0kJBXWhwaTpB6', grant_type: 'refresh_token', refresh_token: refresh },
+      body: { client_id: this.clientId, grant_type: 'refresh_token', refresh_token: refresh },
     });
     const access = res.data?.access_token || res.data?.data?.access_token;
     if (access && this.env) {
@@ -546,12 +483,20 @@ export class XunleiPan implements PanAdapter {
     return access || '';
   }
 
+  private headers(token: string) {
+    return {
+      Authorization: `Bearer ${token}`,
+      'x-client-id': this.clientId,
+      'Content-Type': 'application/json',
+    };
+  }
+
   async getFiles(pdirFid: string | number = '') {
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录' };
     const res = await httpJson('https://api-pan.xunlei.com/drive/v1/files', {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, 'x-client-id': 'Xqp0kJBXWhwaTpB6' },
+      headers: this.headers(token),
       query: { parent_id: String(pdirFid || ''), limit: 100 },
     });
     return { code: 200, message: '获取成功', data: res.data?.files || res.data?.data || [] } as any;
@@ -560,120 +505,180 @@ export class XunleiPan implements PanAdapter {
   async deletepdirFid(filelist: string[]) {
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录' };
-    for (const id of filelist) {
-      await httpJson(`https://api-pan.xunlei.com/drive/v1/files/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}`, 'x-client-id': 'Xqp0kJBXWhwaTpB6' },
-      });
-    }
+    await httpJson('https://api-pan.xunlei.com/drive/v1/files/batch_delete', {
+      method: 'POST',
+      headers: this.headers(token),
+      body: { ids: filelist, space: '' },
+    }).catch(async () => {
+      for (const id of filelist) {
+        await httpJson(`https://api-pan.xunlei.com/drive/v1/files/${id}`, {
+          method: 'DELETE',
+          headers: this.headers(token),
+        });
+      }
+    });
     return { code: 200, message: 'ok', data: null };
   }
 
   async transfer(pwdId: string): Promise<TransferResult> {
-    if (this.cfg.isType === 1) {
-      return { code: 200, message: '检验成功', data: { title: pwdId, share_url: this.cfg.url, code: this.cfg.code } };
+    const shareId = pwdId.split('?')[0];
+    let code = (this.cfg.code || '').replace(/#/g, '');
+    if (!code) {
+      const m = this.cfg.url.match(/[?&]pwd=([^&\s#]+)/i);
+      if (m) code = m[1];
     }
+
     const token = await this.getAccessToken();
     if (!token) return { code: 500, message: '迅雷未登录，请检查 refresh_token(xunlei_cookie)' };
+
+    const shareRes = await httpJson('https://api-pan.xunlei.com/drive/v1/share', {
+      method: 'GET',
+      headers: this.headers(token),
+      query: {
+        share_id: shareId,
+        pass_code: code,
+        limit: 100,
+        pass_code_token: '',
+        page_token: '',
+        thumbnail_size: 'SIZE_SMALL',
+      },
+    });
+    const info = shareRes.data;
+    if (info?.error_code) {
+      return { code: 500, message: info.error_description || '获取分享失败' };
+    }
+    if (info?.share_status && info.share_status !== 'OK') {
+      return {
+        code: 500,
+        message: info.share_status_text || (info.share_status === 'SENSITIVE_RESOURCE' ? '该分享内容无法访问' : '资源已失效'),
+      };
+    }
+
+    const title = info?.files?.[0]?.name || info?.title || shareId;
+    if (this.cfg.isType === 1) {
+      return { code: 200, message: '检验成功', data: { title, share_url: this.cfg.url, code } };
+    }
+
+    const parent = this.cfg.expired_type === 2 ? this.conf.xunlei_file_time : this.conf.xunlei_file;
+    const ids = Array.isArray(info?.files) ? info.files.map((f: any) => f.id).filter(Boolean) : [];
+    const restoreRes = await httpJson('https://api-pan.xunlei.com/drive/v1/share/restore', {
+      method: 'POST',
+      headers: this.headers(token),
+      body: {
+        parent_id: parent || '',
+        share_id: shareId,
+        pass_code_token: info?.pass_code_token || '',
+        ancestor_ids: [],
+        specify_parent_id: true,
+        file_ids: ids,
+      },
+    });
+    if (restoreRes.data?.error_code || restoreRes.status >= 400) {
+      return {
+        code: 500,
+        message: restoreRes.data?.error_description || restoreRes.data?.message || '迅雷转存失败',
+      };
+    }
+
+    const taskId = restoreRes.data?.restore_task_id || restoreRes.data?.id;
+    let taskData: any = restoreRes.data;
+    if (taskId) {
+      for (let i = 0; i < 20; i++) {
+        const task = await httpJson(`https://api-pan.xunlei.com/drive/v1/tasks/${taskId}`, {
+          method: 'GET',
+          headers: this.headers(token),
+        });
+        taskData = task.data || {};
+        if (Number(taskData.progress) === 100) break;
+        if (taskData.error_code) {
+          return { code: 500, message: taskData.error_description || '转存任务失败' };
+        }
+        await sleep(500);
+      }
+    }
+    if (taskData && Number(taskData.progress) !== 100 && taskId) {
+      return { code: 500, message: taskData.message || '转存未完成' };
+    }
+
+    let fileIds: string[] = [];
     try {
-      const parent = this.cfg.expired_type === 2 ? this.conf.xunlei_file_time : this.conf.xunlei_file;
-      const res = await httpJson('https://api-pan.xunlei.com/drive/v1/share/restore', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'x-client-id': 'Xqp0kJBXWhwaTpB6',
-          'Content-Type': 'application/json',
-        },
-        body: { share_id: pwdId, pass_code: this.cfg.code || '', parent_id: parent || '', file_ids: [] },
-      });
-      if (res.status >= 400 || res.data?.error) {
-        return { code: 500, message: res.data?.error_description || res.data?.message || '迅雷转存失败' };
+      const trace = taskData?.params?.trace_file_ids;
+      if (trace) {
+        const parsed = typeof trace === 'string' ? JSON.parse(trace) : trace;
+        if (Array.isArray(parsed)) fileIds = parsed.map(String);
+        else if (parsed && typeof parsed === 'object') fileIds = Object.values(parsed).map(String);
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!fileIds.length && ids.length) fileIds = ids;
+
+    // 广告清理（尽力）
+    const banned = (this.conf.quark_banned || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (banned.length && fileIds[0]) {
+      try {
+        const list = await this.getFiles(fileIds[0]);
+        const files = (list as any).data || [];
+        const del: string[] = [];
+        for (const f of files) {
+          const name = String(f.name || '');
+          if (banned.some((k) => name.includes(k))) del.push(f.id);
+        }
+        if (del.length && del.length === files.length) {
+          await this.deletepdirFid([fileIds[0]]);
+          return { code: 500, message: '资源内容为空' };
+        }
+        if (del.length) await this.deletepdirFid(del);
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const expirationDays = this.cfg.expired_type === 2 ? '2' : '-1';
+    const shareCreate = await httpJson('https://api-pan.xunlei.com/drive/v1/share', {
+      method: 'POST',
+      headers: this.headers(token),
+      body: {
+        file_ids: fileIds.length ? fileIds : ids,
+        share_to: 'copy',
+        params: { subscribe_push: 'false', WithPassCodeInLink: 'true' },
+        title: '云盘资源分享',
+        restore_limit: '-1',
+        expiration_days: expirationDays,
+      },
+    });
+    if (shareCreate.data?.error_code || !shareCreate.data?.share_url) {
+      // 转存成功但分享失败时，至少返回原链避免假失败
+      if (fileIds.length || restoreRes.data) {
+        return {
+          code: 200,
+          message: '转存成功（重新分享失败，返回原链接）',
+          data: { title, share_url: this.cfg.url, code, fid: fileIds },
+        };
       }
       return {
-        code: 200,
-        message: '转存成功',
-        data: { title: `迅雷-${pwdId}`, share_url: this.cfg.url, code: this.cfg.code || '', fid: pwdId },
+        code: 500,
+        message: shareCreate.data?.error_description || '创建分享失败',
       };
-    } catch (e: any) {
-      return { code: 500, message: e?.message || '迅雷转存失败' };
     }
-  }
-}
 
-export class AlipanPan implements PanAdapter {
-  constructor(
-    private conf: Record<string, string>,
-    private cfg: TransferConfig,
-    private env?: Env
-  ) {}
+    const pass = shareCreate.data.pass_code || code || '';
+    const shareUrl = pass
+      ? `${shareCreate.data.share_url}${String(shareCreate.data.share_url).includes('?') ? '&' : '?'}pwd=${pass}`
+      : shareCreate.data.share_url;
 
-  private async getAccessToken(): Promise<string> {
-    if (this.env) {
-      const cached = await this.env.KV.get('aliyun:access_token');
-      if (cached) return cached;
-    }
-    // Authorization conf may already be access token or refresh payload
-    const auth = this.conf.Authorization || '';
-    if (auth.startsWith('ey') || auth.length > 20) {
-      if (this.env) await this.env.KV.put('aliyun:access_token', auth, { expirationTtl: 3600 });
-      return auth;
-    }
-    return '';
-  }
-
-  async getFiles(pdirFid: string | number = 'root') {
-    const token = await this.getAccessToken();
-    if (!token) return { code: 500, message: '阿里未登录' };
-    const res = await httpJson('https://api.aliyundrive.com/adrive/v3/file/list', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Referer: 'https://www.alipan.com/',
-      },
-      body: {
-        all: false,
-        drive_id: this.conf.ali_drive_id || '2008425230',
-        fields: '*',
-        limit: 100,
-        order_by: 'updated_at',
-        order_direction: 'DESC',
-        parent_file_id: pdirFid === 0 ? 'root' : String(pdirFid),
-        url_expire_sec: 14400,
-      },
-    });
-    if (res.data?.message) return { code: 500, message: res.data.message };
-    return { code: 200, message: '获取成功', data: res.data?.items || [] } as any;
-  }
-
-  async deletepdirFid(filelist: string[]) {
-    const token = await this.getAccessToken();
-    if (!token) return { code: 500, message: '阿里未登录' };
-    await httpJson('https://api.aliyundrive.com/adrive/v2/batch', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: {
-        requests: filelist.map((id) => ({
-          body: { drive_id: this.conf.ali_drive_id || '2008425230', file_id: id },
-          id,
-          method: 'POST',
-          url: '/file/delete',
-        })),
-        resource: 'file',
-      },
-    });
-    return { code: 200, message: 'ok', data: null };
-  }
-
-  async transfer(pwdId: string): Promise<TransferResult> {
-    if (this.cfg.isType === 1) {
-      return { code: 200, message: '检验成功', data: { title: pwdId, share_url: this.cfg.url } };
-    }
-    const token = await this.getAccessToken();
-    if (!token) return { code: 500, message: '阿里未登录，请配置 Authorization' };
     return {
-      code: 500,
-      message: '阿里完整转存尚未在 Cloudflare 版完全移植，请先用夸克/UC，或仅使用 isType=1 校验',
+      code: 200,
+      message: '转存成功',
+      data: {
+        title,
+        share_url: shareUrl,
+        code: pass,
+        fid: fileIds,
+      },
     };
   }
 }
@@ -700,8 +705,13 @@ export async function transferUrl(
 ): Promise<TransferResult> {
   const { determineIsType } = await import('@pan-search/shared');
   const type = determineIsType(urlData.url);
+  let code = urlData.code || '';
+  if (!code) {
+    const m = urlData.url.match(/[?&]pwd=([^&\s#]+)/i);
+    if (m) code = m[1];
+  }
   const pwdId = extractPwdId(urlData.url);
   if (!pwdId) return { code: 500, message: '资源地址格式有误' };
-  const pan = createPan(type, conf, urlData, env);
+  const pan = createPan(type, conf, { ...urlData, code }, env);
   return pan.transfer(pwdId.split('#')[0]);
 }

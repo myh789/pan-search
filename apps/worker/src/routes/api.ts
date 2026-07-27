@@ -187,28 +187,40 @@ apiRoutes.post('/open/transfer', async (c) => {
   const expired_type = Number(body.expired_type || 1);
   const isSave = Number(body.isSave || 0);
   const isType = Number(body.isType || 0);
+  // async=1 时走队列（可选）；默认与原版一致：同步转存并返回分享链
+  const useQueue = String(body.async || '') === '1' && isType !== 1;
 
-  // Sync path for validate-only; async queue for real transfer
-  if (isType === 1) {
-    const res = await transferUrl(c.env, conf, {
+  if (useQueue) {
+    await c.env.TRANSFER_QUEUE.send({
+      type: 'transfer',
       url,
       code: String(body.code || ''),
-      isType: 1,
-      expired_type,
+      expiredType: expired_type,
+      isType: 0,
+      isSave,
     });
-    if (res.code !== 200) return c.json(jerr(res.message));
-    return c.json(jok('获取成功', res.data));
+    return c.json(jok('已提交转存任务', { queued: true }));
   }
 
-  await c.env.TRANSFER_QUEUE.send({
-    type: 'transfer',
+  const res = await transferUrl(c.env, conf, {
     url,
     code: String(body.code || ''),
-    expiredType: expired_type,
-    isType: 0,
-    isSave,
+    isType,
+    expired_type,
   });
-  return c.json(jok('已提交转存任务', { queued: true }));
+  if (res.code !== 200 || !res.data) return c.json(jerr(res.message));
+
+  if (isSave === 1) {
+    await insertSource(c.env, {
+      title: res.data.title,
+      url: res.data.share_url,
+      is_type: determineIsType(res.data.share_url),
+      code: res.data.code || String(body.code || ''),
+      fid: typeof res.data.fid === 'string' ? res.data.fid : JSON.stringify(res.data.fid || ''),
+      is_time: expired_type === 2 ? 1 : 0,
+    });
+  }
+  return c.json(jok(isType === 1 ? '获取成功' : '转存成功', res.data));
 });
 
 apiRoutes.get('/source/day', async (c) => {

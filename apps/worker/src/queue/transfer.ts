@@ -82,10 +82,15 @@ export async function processTransferJob(env: Env, job: TransferJob) {
   if (job.type === 'transfer_all') {
     const feed = conf.transfer_feed_url;
     if (!feed) return { code: 500, message: '未配置转存聚合源 transfer_feed_url' };
-    const cats = await env.DB.prepare('SELECT source_category_id FROM source_category WHERE is_update = 1').all<{
-      source_category_id: number;
-    }>();
-    const ids = (cats.results || []).map((c) => c.source_category_id);
+    let ids: number[] = [];
+    if (job.categoryId) {
+      ids = [job.categoryId];
+    } else {
+      const cats = await env.DB.prepare('SELECT source_category_id FROM source_category WHERE is_update = 1').all<{
+        source_category_id: number;
+      }>();
+      ids = (cats.results || []).map((c) => c.source_category_id);
+    }
     for (const catId of ids) {
       let page = 1;
       while (page < 20) {

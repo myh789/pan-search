@@ -68,12 +68,33 @@ adminRoutes.post('/admin/logout', async (c) => {
 adminRoutes.get('/admin/getMyInfo', async (c) => {
   const id = c.get('adminId');
   const row = await c.env.DB.prepare(
-    'SELECT admin_id, admin_account, admin_name, admin_email, admin_group FROM admin WHERE admin_id = ?'
+    'SELECT admin_id, admin_account, admin_name, admin_truename, admin_email, admin_idcard, admin_group FROM admin WHERE admin_id = ?'
   )
     .bind(id)
     .first();
   const menu = await getMenuForAdmin(c.env, c.get('adminGroup') || 0);
   return c.json(jok('ok', { ...row, menu }));
+});
+
+adminRoutes.post('/admin/updateMyInfo', async (c) => {
+  const body = await c.req.parseBody();
+  const id = c.get('adminId');
+  if (!id) return c.json(jerr('未登录', 401));
+  const name = String(body.admin_name || '').trim();
+  if (!name) return c.json(jerr('昵称必须填写'));
+  await c.env.DB.prepare(
+    'UPDATE admin SET admin_name=?, admin_truename=?, admin_email=?, admin_idcard=?, admin_updatetime=? WHERE admin_id=?'
+  )
+    .bind(
+      name,
+      String(body.admin_truename || ''),
+      String(body.admin_email || ''),
+      String(body.admin_idcard || ''),
+      nowSec(),
+      id
+    )
+    .run();
+  return c.json(jok('资料已更新'));
 });
 
 adminRoutes.post('/admin/motifyPassword', async (c) => {
@@ -294,7 +315,9 @@ adminRoutes.get('/source/getFiles', async (c) => {
 });
 
 adminRoutes.post('/source/transferAll', async (c) => {
-  await c.env.TRANSFER_QUEUE.send({ type: 'transfer_all' });
+  const body = await c.req.parseBody().catch(() => ({} as any));
+  const categoryId = Number(body.source_category_id || 0);
+  await c.env.TRANSFER_QUEUE.send({ type: 'transfer_all', categoryId: categoryId || undefined });
   return c.json(jok('已提交全部转存任务'));
 });
 
@@ -505,23 +528,34 @@ adminRoutes.post('/attach/uploadImage', async (c) => {
   return c.json(jok('上传成功', { path: `/api/tool/file?key=${encodeURIComponent(key)}`, key }));
 });
 
-adminRoutes.get('/attach/getList', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT * FROM attach ORDER BY attach_id DESC LIMIT 100').all();
-  return c.json(jok('ok', { items: rows.results || [] }));
-});
-
 adminRoutes.post('/attach/delete', async (c) => {
   const body = await c.req.parseBody();
-  const id = Number(body.attach_id);
-  const row = await c.env.DB.prepare('SELECT * FROM attach WHERE attach_id = ?').bind(id).first<any>();
-  if (!row) return c.json(jerr('不存在'));
-  try {
-    await c.env.R2.delete(row.attach_path);
-  } catch {
-    /* ignore */
+  const ids = String(body.ids || body.attach_id || '')
+    .split(',')
+    .map(Number)
+    .filter(Boolean);
+  if (!ids.length) return c.json(jerr('未选择附件'));
+  for (const id of ids) {
+    const row = await c.env.DB.prepare('SELECT * FROM attach WHERE attach_id = ?').bind(id).first<any>();
+    if (!row) continue;
+    try {
+      await c.env.R2.delete(row.attach_path);
+    } catch {
+      /* ignore */
+    }
+    await c.env.DB.prepare('DELETE FROM attach WHERE attach_id = ?').bind(id).run();
   }
-  await c.env.DB.prepare('DELETE FROM attach WHERE attach_id = ?').bind(id).run();
   return c.json(jok('删除成功'));
+});
+
+adminRoutes.get('/attach/getList', async (c) => {
+  const page = Number(c.req.query('page') || 1);
+  const pageSize = Number(c.req.query('page_size') || 20);
+  const total = await c.env.DB.prepare('SELECT COUNT(*) as c FROM attach').first<{ c: number }>();
+  const rows = await c.env.DB.prepare('SELECT * FROM attach ORDER BY attach_id DESC LIMIT ? OFFSET ?')
+    .bind(pageSize, (page - 1) * pageSize)
+    .all();
+  return c.json(jok('ok', { items: rows.results || [], total: total?.c || 0, page, page_size: pageSize }));
 });
 
 // admin / group / node CRUD (simplified)
@@ -653,6 +687,24 @@ adminRoutes.post('/group/delete', async (c) => {
   await c.env.DB.prepare('DELETE FROM auth WHERE auth_group = ?').bind(gid).run();
   await c.env.DB.prepare('DELETE FROM groups WHERE group_id = ?').bind(gid).run();
   return c.json(jok('删除成功'));
+});
+
+adminRoutes.post('/group/disable', async (c) => {
+  const body = await c.req.parseBody();
+  const gid = Number(body.group_id);
+  if (!gid || gid === 1) return c.json(jerr('不可禁用超管组'));
+  await c.env.DB.prepare('UPDATE groups SET group_status = 1, group_updatetime = ? WHERE group_id = ?')
+    .bind(nowSec(), gid)
+    .run();
+  return c.json(jok('已禁用'));
+});
+
+adminRoutes.post('/group/enable', async (c) => {
+  const body = await c.req.parseBody();
+  await c.env.DB.prepare('UPDATE groups SET group_status = 0, group_updatetime = ? WHERE group_id = ?')
+    .bind(nowSec(), Number(body.group_id))
+    .run();
+  return c.json(jok('已启用'));
 });
 
 adminRoutes.get('/group/getAuthorize', async (c) => {

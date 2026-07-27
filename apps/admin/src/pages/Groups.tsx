@@ -25,62 +25,82 @@ export function Groups() {
 
   return (
     <div>
-      <h2>用户组</h2>
-      <div className="card row">
+      <div className="toolbar">
         <input placeholder="新组名" value={name} onChange={(e) => setName(e.target.value)} style={{ maxWidth: 200 }} />
         <button
+          type="button"
+          className="plain sm"
           onClick={async () => {
+            if (!name.trim()) return alert('请填写组名');
             await api.postForm('/admin/group/add', { group_name: name });
             setName('');
             load();
           }}
         >
-          添加组
+          + 添加组
         </button>
       </div>
-      <div className="card">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>名称</th>
-              <th>状态</th>
-              <th></th>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: 60 }}>ID</th>
+            <th>名称</th>
+            <th style={{ width: 90, textAlign: 'center' }}>禁用</th>
+            <th style={{ width: 200, textAlign: 'center' }}>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it) => (
+            <tr key={it.group_id}>
+              <td>{it.group_id}</td>
+              <td>{it.group_name}</td>
+              <td style={{ textAlign: 'center' }}>
+                {it.group_id !== 1 ? (
+                  <button
+                    type="button"
+                    className={`switch ${it.group_status ? 'on danger' : ''}`}
+                    onClick={async () => {
+                      await api.postForm(it.group_status ? '/admin/group/enable' : '/admin/group/disable', {
+                        group_id: it.group_id,
+                      });
+                      load();
+                    }}
+                  />
+                ) : (
+                  '-'
+                )}
+              </td>
+              <td style={{ textAlign: 'center' }}>
+                {it.group_id !== 1 ? (
+                  <>
+                    <button type="button" className="link-btn" onClick={() => loadAuth(it.group_id)}>
+                      授权
+                    </button>
+                    <button
+                      type="button"
+                      className="link-btn danger-text"
+                      onClick={async () => {
+                        if (!confirm('确认删除该用户组？')) return;
+                        const j = await api.postForm('/admin/group/delete', { group_id: it.group_id });
+                        alert(j.message);
+                        if (gid === it.group_id) setGid(0);
+                        load();
+                      }}
+                    >
+                      删除
+                    </button>
+                  </>
+                ) : (
+                  <span className="muted">超管组</span>
+                )}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {items.map((it) => (
-              <tr key={it.group_id}>
-                <td>{it.group_id}</td>
-                <td>{it.group_name}</td>
-                <td>{it.group_status ? '禁用' : '正常'}</td>
-                <td className="row">
-                  {it.group_id !== 1 && (
-                    <>
-                      <button className="ghost" onClick={() => loadAuth(it.group_id)}>
-                        授权
-                      </button>
-                      <button
-                        className="danger"
-                        onClick={async () => {
-                          const j = await api.postForm('/admin/group/delete', { group_id: it.group_id });
-                          alert(j.message);
-                          load();
-                        }}
-                      >
-                        删
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
       {gid > 0 && gid !== 1 && (
-        <div className="card">
-          <h3>授权菜单节点（组 {gid}）</h3>
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-hd">授权菜单节点（组 {gid}）</div>
           <div className="row" style={{ alignItems: 'flex-start' }}>
             {nodes.map((n) => (
               <label key={n.node_id} style={{ display: 'flex', gap: 6, minWidth: 160 }}>
@@ -98,6 +118,7 @@ export function Groups() {
             ))}
           </div>
           <button
+            type="button"
             style={{ marginTop: 12 }}
             onClick={async () => {
               const j = await api.postForm('/admin/group/authorize', {

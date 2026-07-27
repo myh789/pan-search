@@ -42,6 +42,9 @@ export function Layout() {
         </nav>
         <div className="topbar-right">
           <span className="muted">{title}</span>
+          <button type="button" className="linkish" onClick={() => (location.href = '/qfadmin/profile')}>
+            修改资料
+          </button>
           <button type="button" className="linkish" onClick={() => (location.href = '/qfadmin/')}>
             概况
           </button>

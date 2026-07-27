@@ -262,6 +262,18 @@ export function Sources() {
         <button type="button" className="plain sm" onClick={() => setDlgBatch(true)}>
           批量导入
         </button>
+        <button
+          type="button"
+          className="plain sm"
+          onClick={async () => {
+            if (!filterCat) return alert('请先在右侧筛选一个要日更/全量转存的分类');
+            if (!confirm('将按分类提交全部转存任务，是否继续？')) return;
+            const j = await api.postForm('/admin/source/transferAll', { source_category_id: filterCat });
+            alert(j.message);
+          }}
+        >
+          分类全部转存
+        </button>
         <span className="spacer" />
         <select
           style={{ maxWidth: 140 }}

@@ -15,6 +15,7 @@ import { Feedback } from './pages/Feedback';
 import { Admins } from './pages/Admins';
 import { Attach } from './pages/Attach';
 import { Groups } from './pages/Groups';
+import { Profile } from './pages/Profile';
 import './styles.css';
 
 function Private({ children }: { children: React.ReactNode }) {
@@ -45,6 +46,7 @@ createRoot(document.getElementById('root')!).render(
         <Route path="admins" element={<Admins />} />
         <Route path="attach" element={<Attach />} />
         <Route path="groups" element={<Groups />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
     </Routes>
   </BrowserRouter>
