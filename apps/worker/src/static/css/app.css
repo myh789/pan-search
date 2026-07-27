@@ -392,6 +392,19 @@ a:hover {
     width: calc(20% - 12px);
 }
 
+.home.homeNO.homeSingle {
+    justify-content: center;
+}
+
+.home.homeNO.homeSingle .block {
+    width: min(460px, 100%);
+    margin: 0 auto 20px;
+}
+
+.home.homeNO.homeSingle .content .list .item {
+    max-width: none;
+}
+
 .home.homeNO .content .list {
     padding: 10px;
 }
@@ -1186,10 +1199,32 @@ a:hover {
 }
 
 .dialogUrlBox .dialogUrl .dialogUrl-loading {
-    padding: 36px 12px;
+    padding: 32px 16px 20px;
     text-align: center;
-    color: #64748b;
-    font-size: 14px;
+}
+
+.dialogUrlBox .dialogUrl .dialogUrl-loading .dlg-spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 14px;
+    border: 3px solid #e2e8f0;
+    border-top-color: var(--theme-theme);
+    border-radius: 50%;
+    animation: dlgSpin 0.75s linear infinite;
+}
+
+.dialogUrlBox .dialogUrl .dialogUrl-loading p {
+    margin: 0;
+    color: #334155;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+@keyframes dlgSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .dialogUrlBox .dialogUrl .statement {
