@@ -1,0 +1,216 @@
+-- D1 schema for pan-search (SQLite)
+CREATE TABLE IF NOT EXISTS access (
+  access_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  access_admin INTEGER NOT NULL DEFAULT 0,
+  access_token TEXT NOT NULL DEFAULT '',
+  access_plat TEXT NOT NULL DEFAULT 'all',
+  access_ip TEXT NOT NULL DEFAULT '',
+  access_status INTEGER NOT NULL DEFAULT 0,
+  access_createtime INTEGER NOT NULL DEFAULT 0,
+  access_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS admin (
+  admin_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_account TEXT NOT NULL,
+  admin_password TEXT NOT NULL,
+  admin_salt TEXT NOT NULL DEFAULT '',
+  admin_name TEXT NOT NULL DEFAULT '',
+  admin_idcard TEXT NOT NULL DEFAULT '',
+  admin_truename TEXT NOT NULL DEFAULT '',
+  admin_email TEXT NOT NULL DEFAULT '',
+  admin_money REAL NOT NULL DEFAULT 0,
+  admin_group INTEGER NOT NULL DEFAULT 0,
+  admin_ipreg TEXT NOT NULL DEFAULT '',
+  admin_status INTEGER NOT NULL DEFAULT 0,
+  admin_createtime INTEGER NOT NULL DEFAULT 0,
+  admin_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS attach (
+  attach_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  attach_name TEXT,
+  attach_path TEXT NOT NULL DEFAULT '',
+  attach_type TEXT NOT NULL DEFAULT '',
+  attach_size INTEGER NOT NULL DEFAULT 0,
+  attach_admin INTEGER NOT NULL DEFAULT 0,
+  attach_status INTEGER NOT NULL DEFAULT 0,
+  attach_createtime INTEGER NOT NULL DEFAULT 0,
+  attach_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS auth (
+  auth_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  auth_group INTEGER NOT NULL DEFAULT 0,
+  auth_node INTEGER NOT NULL DEFAULT 0,
+  auth_status INTEGER NOT NULL DEFAULT 0,
+  auth_createtime INTEGER NOT NULL DEFAULT 0,
+  auth_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS conf (
+  conf_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conf_key TEXT NOT NULL DEFAULT '',
+  conf_value TEXT,
+  conf_title TEXT DEFAULT '',
+  conf_desc TEXT DEFAULT '',
+  conf_int INTEGER NOT NULL DEFAULT 0,
+  conf_spec INTEGER NOT NULL DEFAULT 0,
+  conf_content TEXT,
+  conf_type INTEGER NOT NULL DEFAULT 0,
+  conf_status INTEGER NOT NULL DEFAULT 0,
+  conf_sort INTEGER NOT NULL DEFAULT 0,
+  conf_system INTEGER NOT NULL DEFAULT 0,
+  conf_createtime INTEGER NOT NULL DEFAULT 0,
+  conf_updatetime INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_conf_key ON conf(conf_key);
+
+CREATE TABLE IF NOT EXISTS days (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  fid TEXT DEFAULT '',
+  time TEXT DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content TEXT,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS groups (
+  group_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  group_name TEXT NOT NULL,
+  group_desc TEXT NOT NULL DEFAULT '',
+  group_status INTEGER NOT NULL DEFAULT 0,
+  group_createtime INTEGER NOT NULL DEFAULT 0,
+  group_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT,
+  ip TEXT,
+  domain TEXT,
+  update_time INTEGER NOT NULL DEFAULT 0,
+  create_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS node (
+  node_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_title TEXT NOT NULL,
+  node_desc TEXT NOT NULL DEFAULT '',
+  node_module TEXT NOT NULL DEFAULT 'api',
+  node_controller TEXT NOT NULL DEFAULT '',
+  node_action TEXT NOT NULL DEFAULT '',
+  node_pid INTEGER NOT NULL DEFAULT 0,
+  node_order INTEGER NOT NULL DEFAULT 0,
+  node_show INTEGER NOT NULL DEFAULT 1,
+  node_icon TEXT NOT NULL DEFAULT '',
+  node_extend TEXT,
+  node_status INTEGER NOT NULL DEFAULT 0,
+  node_createtime INTEGER NOT NULL DEFAULT 0,
+  node_updatetime INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS source (
+  source_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL DEFAULT '',
+  url TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  content TEXT,
+  page_views INTEGER NOT NULL DEFAULT 0,
+  is_time INTEGER NOT NULL DEFAULT 0,
+  is_user INTEGER NOT NULL DEFAULT 0,
+  fid TEXT,
+  is_type INTEGER NOT NULL DEFAULT 0,
+  code TEXT,
+  source_category_id INTEGER NOT NULL DEFAULT 0,
+  vod_content TEXT NOT NULL DEFAULT '',
+  vod_pic TEXT NOT NULL DEFAULT '',
+  status INTEGER NOT NULL DEFAULT 1,
+  is_delete INTEGER NOT NULL DEFAULT 0,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_source_title ON source(title);
+CREATE INDEX IF NOT EXISTS idx_source_cat ON source(source_category_id);
+CREATE INDEX IF NOT EXISTS idx_source_status ON source(status, is_delete, is_time);
+
+CREATE TABLE IF NOT EXISTS source_category (
+  source_category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL DEFAULT '',
+  image TEXT,
+  sort INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 0,
+  is_sys INTEGER NOT NULL DEFAULT 0,
+  is_update INTEGER NOT NULL DEFAULT 1,
+  is_type INTEGER NOT NULL DEFAULT 0,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS source_log (
+  source_log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL DEFAULT '',
+  total_num INTEGER NOT NULL DEFAULT 0,
+  new_num INTEGER NOT NULL DEFAULT 0,
+  update_num INTEGER NOT NULL DEFAULT 0,
+  skip_num INTEGER NOT NULL DEFAULT 0,
+  fail_num INTEGER NOT NULL DEFAULT 0,
+  fail_dec TEXT,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0,
+  end_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS token (
+  token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL DEFAULT 0,
+  token TEXT NOT NULL DEFAULT '',
+  token_expires INTEGER NOT NULL DEFAULT 0,
+  platform TEXT NOT NULL DEFAULT 'all',
+  ip TEXT NOT NULL DEFAULT '',
+  create_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS api_list (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'api',
+  pantype INTEGER NOT NULL DEFAULT 0,
+  url TEXT,
+  method TEXT DEFAULT 'GET',
+  fixed_params TEXT,
+  headers TEXT,
+  field_map TEXT,
+  count INTEGER DEFAULT 0,
+  html_item TEXT,
+  html_title TEXT,
+  html_url TEXT,
+  html_type INTEGER DEFAULT 0,
+  html_url2 TEXT,
+  weight INTEGER DEFAULT 0,
+  status INTEGER DEFAULT 1,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS user (
+  user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  openid TEXT NOT NULL DEFAULT '',
+  nickname TEXT NOT NULL DEFAULT '',
+  head_pic TEXT NOT NULL DEFAULT '',
+  sex INTEGER NOT NULL DEFAULT 0,
+  status INTEGER NOT NULL DEFAULT 1,
+  create_time INTEGER NOT NULL DEFAULT 0,
+  update_time INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS captcha (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token TEXT NOT NULL,
+  code TEXT NOT NULL,
+  expires INTEGER NOT NULL DEFAULT 0
+);

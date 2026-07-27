@@ -1,0 +1,28 @@
+{
+  "name": "pan-search-cf",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @pan-search/worker",
+    "dev:admin": "npm run dev -w @pan-search/admin",
+    "build": "npm run build -w @pan-search/shared && npm run build -w @pan-search/admin && npm run build -w @pan-search/worker",
+    "build:admin": "npm run build -w @pan-search/admin",
+    "deploy": "npm run build:admin && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply pan-search --local",
+    "db:migrate": "wrangler d1 migrations apply pan-search --remote",
+    "css:bundle": "node scripts/bundle-css.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:ui": "node scripts/smoke-ui.mjs",
+    "smoke:sitemap": "node scripts/smoke-sitemap.mjs",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^3.109.2"
+  }
+}

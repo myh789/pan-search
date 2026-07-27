@@ -1,0 +1,45 @@
+name = "pan-search"
+main = "apps/worker/src/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "apps/admin/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pan-search"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "drizzle/migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "00000000-0000-0000-0000-000000000002"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "pan-search-uploads"
+
+[[queues.producers]]
+binding = "TRANSFER_QUEUE"
+queue = "pan-transfer"
+
+[[queues.consumers]]
+queue = "pan-transfer"
+max_batch_size = 5
+max_retries = 3
+
+[triggers]
+crons = ["*/10 * * * *", "0 */12 * * *", "0 3 * * *"]
+
+[vars]
+APP_NAME = "PanSearch"
+SYSTEM_SALT = "qfshop"
+ENCRYPT_KEY = "ABCD"
+ENCRYPT_IV = "1234567890123456"
+
+# Secrets (set via: wrangler secret put ...):
+# ADMIN_BOOTSTRAP_PASSWORD

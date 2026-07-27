@@ -1,0 +1,56 @@
+:root {
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --line: #2a3548;
+  --text: #e8eef4;
+  --muted: #8b9bb0;
+  --accent: #3d8bfd;
+  --danger: #e85d5d;
+  --ok: #3ecf8e;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+a { color: var(--accent); text-decoration: none; }
+button, input, select, textarea {
+  font: inherit; color: inherit;
+}
+button {
+  background: var(--accent); border: 0; color: #fff; padding: 8px 14px;
+  border-radius: 8px; cursor: pointer;
+}
+button.ghost { background: transparent; border: 1px solid var(--line); }
+button.danger { background: var(--danger); }
+input, select, textarea {
+  background: #121a24; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; width: 100%;
+}
+.layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.side { background: var(--panel); border-right: 1px solid var(--line); padding: 20px 12px; }
+.side h1 { font-size: 1.1rem; margin: 0 12px 20px; }
+.side a {
+  display: block; padding: 10px 12px; border-radius: 8px; color: var(--text); margin-bottom: 4px;
+}
+.side a.active, .side a:hover { background: #243044; }
+.main { padding: 24px; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 16px;
+}
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+th, td { border-bottom: 1px solid var(--line); padding: 10px 8px; text-align: left; vertical-align: top; }
+.muted { color: var(--muted); }
+.login-wrap {
+  min-height: 100vh; display: grid; place-items: center;
+  background: radial-gradient(800px 400px at 20% 0%, #1e3a5f66, transparent), var(--bg);
+}
+.login-card { width: min(400px, 92vw); }
+.login-card h2 { margin-top: 0; }
+.field { margin-bottom: 12px; }
+.field label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 0.85rem; }
+.captcha { display: flex; gap: 8px; align-items: center; }
+.captcha img { height: 40px; border-radius: 6px; cursor: pointer; background: #111; }
+@media (max-width: 800px) {
+  .layout { grid-template-columns: 1fr; }
+  .side { display: flex; gap: 4px; overflow: auto; }
+}

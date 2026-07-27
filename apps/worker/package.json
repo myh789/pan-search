@@ -1,0 +1,19 @@
+{
+  "name": "@pan-search/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config ../../wrangler.toml",
+    "build": "echo worker bundled by wrangler",
+    "deploy": "wrangler deploy --config ../../wrangler.toml"
+  },
+  "dependencies": {
+    "@pan-search/shared": "*",
+    "hono": "^4.7.2",
+    "drizzle-orm": "^0.39.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250214.0"
+  }
+}

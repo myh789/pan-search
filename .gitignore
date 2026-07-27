@@ -7,3 +7,17 @@ nginx.htaccess
 /extend/netdisk/pan/access_token.json
 /extend/netdisk/pan/xunlei_captcha.json
 /extend/netdisk/pan/xunlei_token.json
+
+# Cloudflare rewrite
+node_modules/
+apps/admin/dist/
+.wrangler/
+dist/
+*.local
+.DS_Store
+.dev.vars
+.dev.vars.*
+wrangler.toml.local
+!.env.example
+!wrangler.toml.example
+

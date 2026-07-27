@@ -2,6 +2,15 @@
 
 **支持多网盘转存分享，支持夸克网盘、百度网盘、阿里云盘、UC网盘、迅雷云盘，网盘资源管理与索引工具！**
 
+> **Cloudflare 重写版**（Workers + D1 + KV + R2 + Queues）  
+> - 部署教程：[docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md)  
+> - 功能对齐 / 已知限制：[docs/PARITY.md](docs/PARITY.md)  
+> - 旧库迁移：[docs/mysql-to-d1.md](docs/mysql-to-d1.md)  
+> - 代码目录：`apps/worker`、`apps/admin`（原 ThinkPHP 代码仍保留作对照）
+>
+> 快速本地：`npm install` → `npm run db:migrate:local` → `npm run build:admin` → `npm run dev`  
+> 后台默认 `admin` / `Admin123!`（上线请立即改密与 `api_key`）
+
 ---
 
 ## 🔔 温馨提示

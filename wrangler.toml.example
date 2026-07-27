@@ -1,0 +1,55 @@
+# Copy to wrangler.toml and replace placeholder IDs before deploy.
+# Create resources:
+#   npx wrangler d1 create pan-search
+#   npx wrangler kv namespace create pan-search-kv
+#   npx wrangler r2 bucket create pan-search-uploads
+#   npx wrangler queues create pan-transfer
+
+name = "pan-search"
+main = "apps/worker/src/index.ts"
+compatibility_date = "2025-02-14"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "apps/admin/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pan-search"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "drizzle/migrations"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "pan-search-uploads"
+
+[[queues.producers]]
+binding = "TRANSFER_QUEUE"
+queue = "pan-transfer"
+
+[[queues.consumers]]
+queue = "pan-transfer"
+max_batch_size = 5
+max_retries = 3
+
+[triggers]
+crons = ["*/10 * * * *", "0 */12 * * *", "0 3 * * *"]
+
+[vars]
+APP_NAME = "PanSearch"
+SYSTEM_SALT = "qfshop"
+# Change these in production (or prefer: wrangler secret put ENCRYPT_KEY)
+ENCRYPT_KEY = "CHANGE_ME_ENCRYPT_KEY"
+ENCRYPT_IV = "1234567890123456"
+
+# Secrets (do not put real passwords here):
+# npx wrangler secret put ADMIN_BOOTSTRAP_PASSWORD
+# npx wrangler secret put ENCRYPT_KEY
+# npx wrangler secret put ENCRYPT_IV
