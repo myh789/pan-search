@@ -1,22 +1,77 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api, clearToken } from '../api/client';
 
-const links = [
-  ['/', '概况'],
-  ['/sources', '资源管理'],
-  ['/categories', '分类管理'],
-  ['/apilist', '接口配置'],
-  ['/deposit', '账号管理'],
-  ['/conf', '基础设置'],
-  ['/attach', '附件管理'],
-  ['/logs', '资源日志'],
-  ['/feedback', '用户需求'],
-  ['/admins', '管理员'],
-  ['/groups', '用户组'],
-] as const;
+type SideItem = { to: string; label: string; end?: boolean };
+type TopItem = { key: string; label: string; match: (path: string) => boolean; defaultTo: string; side: SideItem[] };
+
+const TOP: TopItem[] = [
+  {
+    key: 'home',
+    label: '概况',
+    match: (p) => p === '/' || p === '',
+    defaultTo: '/',
+    side: [{ to: '/', label: '概况', end: true }],
+  },
+  {
+    key: 'source',
+    label: '资源',
+    match: (p) =>
+      ['/sources', '/categories', '/apilist', '/deposit', '/logs', '/feedback'].some((x) => p === x || p.startsWith(x + '/')),
+    defaultTo: '/sources',
+    side: [
+      { to: '/sources', label: '资源管理' },
+      { to: '/categories', label: '分类管理' },
+      { to: '/apilist', label: '接口配置' },
+      { to: '/deposit', label: '账号管理' },
+      { to: '/logs', label: '资源日志' },
+      { to: '/feedback', label: '用户需求' },
+    ],
+  },
+  {
+    key: 'system',
+    label: '系统',
+    match: (p) =>
+      ['/conf', '/profile', '/password', '/clean', '/admins', '/groups'].some((x) => p === x || p.startsWith(x + '/')),
+    defaultTo: '/conf',
+    side: [
+      { to: '/conf', label: '基础设置' },
+      { to: '/admins', label: '管理员' },
+      { to: '/groups', label: '用户组' },
+    ],
+  },
+  {
+    key: 'config',
+    label: '配置',
+    match: (p) =>
+      ['/attach', '/access-logs', '/conf-params', '/nodes'].some((x) => p === x || p.startsWith(x + '/')),
+    defaultTo: '/attach',
+    side: [
+      { to: '/attach', label: '附件管理' },
+      { to: '/conf-params', label: '参数配置' },
+      { to: '/nodes', label: '菜单管理' },
+      { to: '/access-logs', label: '访问日志' },
+    ],
+  },
+];
 
 export function Layout() {
   const loc = useLocation();
+  const nav = useNavigate();
+  const [name, setName] = useState('管理员');
+  const [userOpen, setUserOpen] = useState(false);
+
+  useEffect(() => {
+    api.get('/admin/admin/getMyInfo').then((j) => {
+      if (j.data?.admin_name || j.data?.admin_account) {
+        setName(j.data.admin_name || j.data.admin_account);
+      }
+    });
+  }, []);
+
+  const path = loc.pathname;
+  const activeTop = useMemo(() => TOP.find((t) => t.match(path)) || TOP[0], [path]);
+
   const logout = async () => {
     try {
       await api.postForm('/admin/admin/logout', {});
@@ -27,51 +82,77 @@ export function Layout() {
     location.href = '/qfadmin/login';
   };
 
-  const title =
-    links.find(([to]) => (to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to)))?.[1] || '资源管理系统';
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else document.exitFullscreen?.();
+  };
 
   return (
-    <div className="layout">
+    <div className="layout yadmin">
       <header className="topbar">
         <nav className="top-nav">
-          {links.slice(0, 6).map(([to, label]) => (
-            <NavLink key={to} to={to} end={to === '/'} className={({ isActive }) => (isActive ? 'is-active' : '')}>
-              {label}
-            </NavLink>
+          {TOP.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              className={`top-nav-item ${activeTop.key === t.key ? 'is-active' : ''}`}
+              onClick={() => nav(t.defaultTo)}
+            >
+              {t.label}
+            </button>
           ))}
         </nav>
         <div className="topbar-right">
-          <span className="muted">{title}</span>
-          <button type="button" className="linkish" onClick={() => (location.href = '/qfadmin/profile')}>
-            修改资料
+          <button type="button" className="icon-btn" title="全屏" onClick={toggleFullscreen}>
+            ⛶
           </button>
-          <button type="button" className="linkish" onClick={() => (location.href = '/qfadmin/')}>
-            概况
-          </button>
-          <button type="button" className="linkish" onClick={() => api.postForm('/admin/system/clean', {}).then(() => alert('缓存已清理'))}>
-            清除缓存
-          </button>
-          <button type="button" className="linkish" onClick={logout}>
-            退出登录
-          </button>
+          <div className="user-menu" onBlur={() => setTimeout(() => setUserOpen(false), 150)}>
+            <button type="button" className="user-trigger" onClick={() => setUserOpen((v) => !v)}>
+              {name} ▾
+            </button>
+            {userOpen && (
+              <div className="user-dropdown">
+                <button type="button" onClick={() => { setUserOpen(false); nav('/profile'); }}>
+                  修改资料
+                </button>
+                <button type="button" onClick={() => { setUserOpen(false); nav('/password'); }}>
+                  修改密码
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setUserOpen(false);
+                    await api.postForm('/admin/system/clean', {});
+                    alert('缓存已清理');
+                  }}
+                >
+                  清除缓存
+                </button>
+                <button type="button" onClick={logout}>
+                  退出登录
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
+
       <div className="body-row">
         <aside className="side">
-          <a className="side-logo" href="/qfadmin/">
+          <a className="side-logo" href="/qfadmin/" title="概况">
             <span>PS</span>
           </a>
           <nav>
-            {links.map(([to, label]) => (
-              <NavLink key={to} to={to} end={to === '/'}>
-                {label}
+            {activeTop.side.map((item) => (
+              <NavLink key={item.to} to={item.to} end={item.end || item.to === '/'}>
+                {item.label}
               </NavLink>
             ))}
           </nav>
           <div className="side-version">
             资源管理系统
             <br />
-            Version 3.6 CF
+            Version 3.6
           </div>
         </aside>
         <main className="main">
