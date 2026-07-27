@@ -161,18 +161,44 @@ app.get('/sitemap.xml', async (c) => {
   return new Response(xml, { headers: { 'Content-Type': 'application/xml; charset=utf-8' } });
 });
 
+/** Admin Vite build lives at assets root (index.html, assets/*), but is served under /qfadmin/. */
+function rewriteAdminAssetRequest(req: Request): Request {
+  const url = new URL(req.url);
+  const p = url.pathname;
+  if (p === '/qfadmin' || p === '/qfadmin/') {
+    url.pathname = '/index.html';
+  } else if (p.startsWith('/qfadmin/')) {
+    url.pathname = p.slice('/qfadmin'.length) || '/';
+  }
+  return new Request(url.toString(), req);
+}
+
+/** ASSETS may 30x /index.html → / ; follow internally so the browser stays on /qfadmin/. */
+async function fetchAdminAssets(env: Env, req: Request): Promise<Response> {
+  if (!env.ASSETS) {
+    return new Response(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Admin</title></head><body>请先构建管理端：npm run build:admin 后再部署</body></html>`,
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+  }
+  let assetReq = rewriteAdminAssetRequest(req);
+  let res = await env.ASSETS.fetch(assetReq);
+  for (let hop = 0; hop < 5 && res.status >= 300 && res.status < 400; hop++) {
+    const loc = res.headers.get('Location');
+    if (!loc) break;
+    assetReq = new Request(new URL(loc, assetReq.url).toString(), assetReq);
+    res = await env.ASSETS.fetch(assetReq);
+  }
+  return res;
+}
+
 app.get('/qfadmin', (c) => c.redirect('/qfadmin/'));
-app.get('/qfadmin/*', async (c) => {
-  if (c.env.ASSETS) return c.env.ASSETS.fetch(c.req.raw);
-  return c.html(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Admin</title></head><body>请先构建管理端：npm run build -w @pan-search/admin</body></html>`
-  );
-});
+app.get('/qfadmin/', (c) => fetchAdminAssets(c.env, c.req.raw));
+app.get('/qfadmin/*', (c) => fetchAdminAssets(c.env, c.req.raw));
 
 app.notFound(async (c) => {
-  // Try .html SEO paths already covered by :slug/:id params (they include .html in param)
   if (c.env.ASSETS && c.req.path.startsWith('/qfadmin')) {
-    const res = await c.env.ASSETS.fetch(c.req.raw);
+    const res = await fetchAdminAssets(c.env, c.req.raw);
     if (res.status !== 404) return res;
   }
   return c.text('Not Found', 404);
