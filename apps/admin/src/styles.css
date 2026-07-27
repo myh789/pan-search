@@ -371,6 +371,18 @@ tr:hover td { background: #f5f7fa; }
 .link-btn.success { color: var(--success) !important; }
 .link-btn.danger-text { color: var(--danger) !important; }
 .link-btn:hover { opacity: 0.85; }
+.link-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.tag-top {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #fff;
+  background: #e6a23c;
+  border-radius: 3px;
+  vertical-align: middle;
+}
 
 .pager {
   display: flex;

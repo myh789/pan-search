@@ -9,6 +9,7 @@ type Row = {
   url: string;
   code?: string;
   is_type?: number;
+  is_top?: number;
   source_category_id?: number;
   description?: string;
   vod_content?: string;
@@ -55,6 +56,7 @@ export function Sources() {
   const [batchType, setBatchType] = useState<1 | 2 | 0>(0);
   const [batchCat, setBatchCat] = useState(0);
   const [batchUrls, setBatchUrls] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   const catName = (id?: number) => cats.find((c) => c.source_category_id === id)?.name || '-';
 
@@ -137,6 +139,37 @@ export function Sources() {
     if (!confirm('即将删除选中的资源, 是否确认?')) return;
     await api.postForm('/admin/source/delete', { source_id: selected.join(',') });
     load();
+  };
+
+  const toggleTop = async (row: Row) => {
+    const j = await api.postForm('/admin/source/toggleTop', { source_id: row.source_id });
+    alert(j.message);
+    if (j.code === 200) load();
+  };
+
+  const aiFill = async (ids: number[]) => {
+    if (!ids.length) return alert('请先选择资源');
+    if (!confirm(`将对 ${ids.length} 条资源智能填充关键词与介绍（已有内容不覆盖），是否继续？`)) return;
+    setAiLoading(true);
+    try {
+      const j = await api.postForm('/admin/source/aiFill', { ids: ids.join(',') });
+      alert(j.message);
+      if (j.code === 200) {
+        if (dlgEdit && ids.includes(form.source_id)) {
+          const d = await api.postForm('/admin/source/detail', { source_id: form.source_id }).catch(() => null);
+          if (d?.code === 200 && d.data) {
+            setForm((f) => ({
+              ...f,
+              description: d.data.description || '',
+              vod_content: d.data.vod_content || '',
+            }));
+          }
+        }
+        load();
+      }
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const exportExcel = () => {
@@ -253,6 +286,14 @@ export function Sources() {
         <button type="button" className="plain sm" onClick={delMulti}>
           批量删除
         </button>
+        <button
+          type="button"
+          className="plain sm"
+          disabled={aiLoading}
+          onClick={() => aiFill(selected)}
+        >
+          {aiLoading ? 'AI 填充中…' : 'AI 智能填充'}
+        </button>
         <button type="button" className="plain sm" onClick={exportExcel}>
           导出资源
         </button>
@@ -341,7 +382,7 @@ export function Sources() {
             <th style={{ textAlign: 'center' }}>资源地址</th>
             <th style={{ width: 180, textAlign: 'center' }}>入库时间</th>
             <th style={{ width: 180, textAlign: 'center' }}>更新时间</th>
-            <th style={{ width: 120, textAlign: 'center' }}>操作</th>
+            <th style={{ width: 220, textAlign: 'center' }}>操作</th>
           </tr>
         </thead>
         <tbody>
@@ -357,14 +398,32 @@ export function Sources() {
                 />
               </td>
               <td>{it.source_id}</td>
-              <td>{it.title}</td>
+              <td>
+                {Number(it.is_top) ? (
+                  <span className="tag-top" title="已置顶">
+                    顶
+                  </span>
+                ) : null}
+                {it.title}
+              </td>
               <td>{catName(it.source_category_id)}</td>
               <td style={{ maxWidth: 260, wordBreak: 'break-all', textAlign: 'center' }}>{it.url}</td>
               <td style={{ textAlign: 'center' }}>{fmtTime(it.create_time)}</td>
               <td style={{ textAlign: 'center' }}>{fmtTime(it.update_time)}</td>
               <td style={{ textAlign: 'center' }}>
+                <button type="button" className="link-btn" onClick={() => toggleTop(it)}>
+                  {Number(it.is_top) ? '取消置顶' : '置顶'}
+                </button>
                 <button type="button" className="link-btn success" onClick={() => openEdit(it)}>
                   编辑
+                </button>
+                <button
+                  type="button"
+                  className="link-btn"
+                  disabled={aiLoading}
+                  onClick={() => aiFill([it.source_id])}
+                >
+                  AI
                 </button>
                 <button type="button" className="link-btn danger-text" onClick={() => delOne(it.source_id)}>
                   删除
@@ -441,6 +500,11 @@ export function Sources() {
             </div>
             <div className="modal-bd">{formFields}</div>
             <div className="modal-ft">
+              {form.source_id > 0 && (
+                <button type="button" className="plain" disabled={aiLoading} onClick={() => aiFill([form.source_id])}>
+                  {aiLoading ? 'AI 填充中…' : '智能填充'}
+                </button>
+              )}
               <button type="button" onClick={saveEdit}>
                 确认修改
               </button>

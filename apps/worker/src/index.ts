@@ -33,8 +33,21 @@ app.use(
 
 app.use('*', async (c, next) => {
   const p = c.req.path;
-  if (!p.startsWith('/qfadmin/assets') && !p.startsWith('/static/')) {
+  const isAsset =
+    p.startsWith('/qfadmin/assets') ||
+    p.startsWith('/static/') ||
+    p.startsWith('/assets/') ||
+    /\.(js|css|map|ico|png|jpg|jpeg|gif|webp|svg|woff2?)$/i.test(p);
+  if (!isAsset) {
     await ensureBootstrapAdmin(c.env);
+  }
+  // 同请求内复用 conf，避免首页/搜索多次打 KV/D1；静态资源跳过
+  if (!isAsset && p !== '/health' && !c.get('conf')) {
+    try {
+      c.set('conf', await getConf(c.env));
+    } catch {
+      /* health 等路径可不依赖 conf */
+    }
   }
   await next();
 });
@@ -55,7 +68,7 @@ app.get('/robots.txt', (c) =>
 );
 
 app.get('/favicon.ico', async (c) => {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   if (conf.app_icon) return c.redirect(conf.app_icon, 302);
   return c.body(null, 204);
 });
@@ -88,12 +101,12 @@ app.get('/api/tool/file', async (c) => {
 });
 
 app.get('/', async (c) => {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   return c.html(await renderHome(c.env, conf));
 });
 
 app.get('/show', async (c) => {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   const type = c.req.query('type');
   let dayStart = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
   if (type) dayStart = Math.floor(new Date(type).setHours(0, 0, 0, 0) / 1000);
@@ -109,7 +122,7 @@ app.get('/show', async (c) => {
 });
 
 async function handleSearch(c: any, slug: string) {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   const { name, page, cate } = parseSearchSlug(slug);
   const list = await getSourceList(c.env, conf, {
     title: name,
@@ -137,7 +150,7 @@ app.get('/s/', async (c) => {
 });
 
 app.get('/d/:id', async (c) => {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   const id = String(c.req.param('id')).replace(/\.html$/i, '');
   const item = await getSourceDetail(c.env, Number(id));
   if (!item) return c.html('Not Found', 404);

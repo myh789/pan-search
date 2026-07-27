@@ -178,6 +178,10 @@ npx wrangler d1 migrations apply pan-search --remote
 第一行是装依赖；第二行是把表结构写进 Cloudflare 上的 D1。  
 若弹出登录 Cloudflare，按提示在浏览器点允许即可。
 
+> 之后每次仓库新增迁移（如 `0005_temp_source_ttl`、`0006_source_top_ai`），上线前都要再执行一次  
+> `npx wrangler d1 migrations apply pan-search --remote`。  
+> `0006` 会加资源置顶列，并写入 AI 配置项（Agnes）。
+
 ### 做法 B：在 D1 网页控制台手工执行 SQL
 
 1. 控制台 → **D1** → 点开 `pan-search`
@@ -250,9 +254,12 @@ npm run deploy
 | 1 | 用 `admin` / 初始密码登录 | 进后台 |
 | 2 | **概况** → 「修改密码」 | 改成自己的强密码并保存 |
 | 3 | **基础设置** | 找到 `api_key`，把 `change-me` 改成一长串随机字符并保存 |
-| 4 | **账号管理** | 至少填好夸克 Cookie 和目录 fid（主推夸克） |
-| 5 | （可选）全网搜线路、`transfer_feed_url` 等 | 按需要填 |
-| 6 | 点 **清理缓存** | 让新配置立刻生效 |
+| 4 | **基础设置 → AI设置** | 填 Agnes API Key（模型默认 `agnes-2.5-flash`）；也可用终端 `npx wrangler secret put AGNES_API_KEY`（Secret 优先于后台） |
+| 5 | **账号管理** | 至少填好夸克 Cookie 和目录 fid（主推夸克） |
+| 6 | （可选）全网搜线路、`transfer_feed_url` 等 | 按需要填 |
+| 7 | 点 **清理缓存** | 让新配置立刻生效 |
+
+资源管理支持：**置顶**、**AI 智能填充**（只补空的关键词标签 / 资源介绍）。
 
 ### 账号管理里常见填写项
 

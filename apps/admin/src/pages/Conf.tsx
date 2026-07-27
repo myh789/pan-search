@@ -17,6 +17,7 @@ const TABS: { name: string; val: number }[] = [
   { name: 'SEO设置', val: 9 },
   { name: '前端模版', val: 3 },
   { name: '搜索设置', val: 1 },
+  { name: 'AI设置', val: 5 },
   { name: '微信设置', val: 8 },
   { name: '上传配置', val: 2 },
   { name: '其他配置', val: 4 },
@@ -60,6 +61,10 @@ const FALLBACK_RADIO: Record<string, [string, string][]> = {
   is_quan_zc: [
     ['开启', '1'],
     ['关闭', '0'],
+  ],
+  ai_enabled: [
+    ['关闭', '0'],
+    ['开启', '1'],
   ],
 };
 
@@ -128,7 +133,10 @@ export function ConfPage() {
           </button>
         ))}
       </div>
-      <p className="tips">上线前务必修改 <code>api_key</code>；图片字段可点「上传」。当前 Tab 保存只写入本页字段。</p>
+      <p className="tips">
+        上线前务必修改 <code>api_key</code>；图片字段可点「上传」。当前 Tab 保存只写入本页字段。
+        AI Key 已配置时显示为 <code>********</code>，不改请保持原样保存；清空可删除密钥。
+      </p>
       <div className="card">
         {list.map((r) => {
           const spec = Number(r.conf_spec || 0);
@@ -181,6 +189,14 @@ export function ConfPage() {
                     />
                   </label>
                 </div>
+              ) : r.conf_key === 'ai_api_key' ? (
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder="sk-…（已配置则显示为星号）"
+                  value={map[r.conf_key] || ''}
+                  onChange={(e) => setMap({ ...map, [r.conf_key]: e.target.value })}
+                />
               ) : (
                 <input value={map[r.conf_key] || ''} onChange={(e) => setMap({ ...map, [r.conf_key]: e.target.value })} />
               )}

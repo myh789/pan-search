@@ -9,6 +9,8 @@ export interface Env {
   ENCRYPT_KEY: string;
   ENCRYPT_IV: string;
   ADMIN_BOOTSTRAP_PASSWORD?: string;
+  /** Agnes / OpenAI 兼容 API Key；优先于 conf.ai_api_key */
+  AGNES_API_KEY?: string;
 }
 
 export type AppVariables = {

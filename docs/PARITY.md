@@ -20,13 +20,14 @@ npm run smoke:sitemap
 | 本地搜索三模式、屏蔽词、SEO 伪静态 `.html`、iconfont、扫码弹窗声明 | ✅ |
 | 全网搜 SSE（api/html/tg/kk）+ 加密链 + save_url | ✅ |
 | 后台布局：顶栏「概况/资源/系统/配置」+ 左侧子菜单 + 用户下拉 | ✅ |
-| 后台资源：添加/编辑/批量删除/表格导入/批量导入（直接入库 / 转存分享） | ✅ |
+| 后台资源：添加/编辑/置顶/AI填充/批量删除/表格导入/批量导入（直接入库 / 转存分享） | ✅ |
 | 分类 / 线路 / 账号 / 附件 / 用户组 / 改密 / 改资料 / 清缓存 / 访问日志 | ✅ |
 | **网盘转存：夸克、UC、百度、阿里、迅雷（转存后重新分享）** | ✅ |
 | **Open API `/api/open/transfer` 默认同步返回分享链**（`async=1` 才进队列） | ✅ |
 | Cron、CORS、`/health`、`robots.txt` | ✅ |
+| Agnes AI 智能填充关键词标签 / 资源介绍（已有不覆盖） | ✅ |
 | 微信 / Chatbot 回调入口 | ⚠️ 可用但能力简化 |
-| D1 读优化：概况 stats KV、会话 KV、配置/分类/线路缓存 | ✅ |
+| D1 读优化：概况 stats KV、会话 KV、配置/分类/线路缓存、同请求 conf 复用、bootstrap KV 短路 | ✅ |
 
 ## 转存说明（核心）
 
@@ -60,5 +61,6 @@ Open API 字段：`api_key`、`url`、`code`、`isType`（1=只校验）、`expi
 | 管理员 | `admin` / `Admin123!` | 系统 → 修改密码 |
 | `api_key` | `change-me` | 基础设置修改 |
 | `ENCRYPT_KEY` | 示例值 | vars/secret 修改 |
+| Agnes AI | 未配置 | 基础设置 → AI设置，或 `wrangler secret put AGNES_API_KEY` |
 
 部署步骤见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)。

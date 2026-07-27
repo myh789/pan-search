@@ -45,3 +45,4 @@ ENCRYPT_IV = "k1h2i3o4b5b6o7b8"
 
 # Secrets (set via: wrangler secret put ...):
 # ADMIN_BOOTSTRAP_PASSWORD
+# AGNES_API_KEY          # Agnes AI（优先于后台 conf.ai_api_key）

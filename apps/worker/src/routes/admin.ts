@@ -10,7 +10,8 @@ import {
   assertNodeAccess,
   revokeAccess,
 } from '../services/auth';
-import { getConf, setConf, invalidateConf } from '../services/conf';
+import { getConf, getConfRowsForAdmin, setConf, invalidateConf } from '../services/conf';
+import { fillSourceMeta } from '../services/ai';
 import { encodePassword, nowSec, randString } from '../utils';
 import { createPan } from '../pan';
 import { createSourceLog } from '../queue/transfer';
@@ -131,8 +132,8 @@ adminRoutes.post('/admin/motifyPassword', async (c) => {
 
 // ---- conf ----
 adminRoutes.get('/conf/getBaseConfig', async (c) => {
-  const rows = await c.env.DB.prepare('SELECT * FROM conf WHERE conf_status = 1 ORDER BY conf_type ASC, conf_sort DESC').all();
-  return c.json(jok('ok', rows.results || []));
+  const rows = await getConfRowsForAdmin(c.env);
+  return c.json(jok('ok', rows));
 });
 
 adminRoutes.get('/conf/getList', async (c) => {
@@ -145,7 +146,11 @@ adminRoutes.get('/conf/getList', async (c) => {
   }
   sql += ' ORDER BY conf_sort DESC';
   const rows = await c.env.DB.prepare(sql).bind(...params).all();
-  return c.json(jok('ok', { items: rows.results || [], total: rows.results?.length || 0 }));
+  const { maskSecret } = await import('../services/secret');
+  const items = (rows.results || []).map((r: any) =>
+    r.conf_key === 'ai_api_key' && r.conf_value ? { ...r, conf_value: maskSecret(String(r.conf_value)) } : r
+  );
+  return c.json(jok('ok', { items, total: items.length }));
 });
 
 adminRoutes.post('/conf/updateBaseConfig', async (c) => {
@@ -207,7 +212,7 @@ adminRoutes.get('/source/getList', async (c) => {
   const whereSql = `WHERE ${where.join(' AND ')}`;
   const total = await c.env.DB.prepare(`SELECT COUNT(*) as c FROM source ${whereSql}`).bind(...params).first<{ c: number }>();
   const items = await c.env.DB.prepare(
-    `SELECT * FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
+    `SELECT * FROM source ${whereSql} ORDER BY is_top DESC, source_id DESC LIMIT ? OFFSET ?`
   )
     .bind(...params, pageSize, (page - 1) * pageSize)
     .all();
@@ -244,23 +249,114 @@ adminRoutes.post('/source/update', async (c) => {
   const body = await c.req.parseBody();
   const id = Number(body.source_id);
   if (!id) return c.json(jerr('缺少ID'));
-  await c.env.DB.prepare(
-    `UPDATE source SET title=?, url=?, description=?, is_type=?, code=?, source_category_id=?, vod_content=?, status=?, update_time=? WHERE source_id=?`
-  )
-    .bind(
-      String(body.title || ''),
-      String(body.url || ''),
-      String(body.description || ''),
-      Number(body.is_type || 0),
-      String(body.code || ''),
-      Number(body.source_category_id || 0),
-      String(body.vod_content || ''),
-      Number(body.status ?? 1),
-      nowSec(),
-      id
+  const hasTop = body.is_top !== undefined && body.is_top !== '';
+  if (hasTop) {
+    await c.env.DB.prepare(
+      `UPDATE source SET title=?, url=?, description=?, is_type=?, code=?, source_category_id=?, vod_content=?, status=?, is_top=?, update_time=? WHERE source_id=?`
     )
-    .run();
+      .bind(
+        String(body.title || ''),
+        String(body.url || ''),
+        String(body.description || ''),
+        Number(body.is_type || 0),
+        String(body.code || ''),
+        Number(body.source_category_id || 0),
+        String(body.vod_content || ''),
+        Number(body.status ?? 1),
+        Number(body.is_top) ? 1 : 0,
+        nowSec(),
+        id
+      )
+      .run();
+  } else {
+    await c.env.DB.prepare(
+      `UPDATE source SET title=?, url=?, description=?, is_type=?, code=?, source_category_id=?, vod_content=?, status=?, update_time=? WHERE source_id=?`
+    )
+      .bind(
+        String(body.title || ''),
+        String(body.url || ''),
+        String(body.description || ''),
+        Number(body.is_type || 0),
+        String(body.code || ''),
+        Number(body.source_category_id || 0),
+        String(body.vod_content || ''),
+        Number(body.status ?? 1),
+        nowSec(),
+        id
+      )
+      .run();
+  }
   return c.json(jok('更新成功'));
+});
+
+adminRoutes.post('/source/toggleTop', async (c) => {
+  const body = await c.req.parseBody();
+  const id = Number(body.source_id);
+  if (!id) return c.json(jerr('缺少ID'));
+  const row = await c.env.DB.prepare('SELECT is_top FROM source WHERE source_id = ? AND is_delete = 0')
+    .bind(id)
+    .first<{ is_top: number }>();
+  if (!row) return c.json(jerr('资源不存在', 404));
+  const next = Number(row.is_top) ? 0 : 1;
+  await c.env.DB.prepare('UPDATE source SET is_top = ?, update_time = ? WHERE source_id = ?')
+    .bind(next, nowSec(), id)
+    .run();
+  return c.json(jok(next ? '已置顶' : '已取消置顶', { is_top: next }));
+});
+
+/** 一键 AI 填充关键词（description）与介绍（vod_content）；已有字段不覆盖 */
+adminRoutes.post('/source/aiFill', async (c) => {
+  const body = await c.req.parseBody();
+  const ids = String(body.ids || body.source_id || '')
+    .split(',')
+    .map(Number)
+    .filter(Boolean);
+  if (!ids.length) return c.json(jerr('请选择资源'));
+  if (ids.length > 20) return c.json(jerr('单次最多 20 条'));
+
+  const conf = await getConf(c.env);
+  const results: { source_id: number; ok: boolean; message: string }[] = [];
+  let filled = 0;
+  let skipped = 0;
+
+  for (const id of ids) {
+    const row = await c.env.DB.prepare(
+      'SELECT source_id, title, description, vod_content FROM source WHERE source_id = ? AND is_delete = 0'
+    )
+      .bind(id)
+      .first<{ source_id: number; title: string; description: string; vod_content: string }>();
+    if (!row) {
+      results.push({ source_id: id, ok: false, message: '不存在' });
+      continue;
+    }
+    try {
+      const out = await fillSourceMeta(c.env, row, conf);
+      if (out.skipped) {
+        skipped++;
+        results.push({ source_id: id, ok: true, message: out.reason || '跳过' });
+        continue;
+      }
+      const desc = out.description != null ? out.description : row.description || '';
+      const intro = out.vod_content != null ? out.vod_content : row.vod_content || '';
+      await c.env.DB.prepare(
+        'UPDATE source SET description = ?, vod_content = ?, update_time = ? WHERE source_id = ?'
+      )
+        .bind(desc, intro, nowSec(), id)
+        .run();
+      filled++;
+      results.push({ source_id: id, ok: true, message: '已填充' });
+    } catch (e: any) {
+      results.push({ source_id: id, ok: false, message: e?.message || '失败' });
+    }
+  }
+
+  return c.json(
+    jok(`完成：填充 ${filled}，跳过 ${skipped}，失败 ${results.filter((r) => !r.ok).length}`, {
+      filled,
+      skipped,
+      results,
+    })
+  );
 });
 
 adminRoutes.post('/source/delete', async (c) => {

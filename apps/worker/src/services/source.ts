@@ -42,7 +42,7 @@ export async function getSourceList(env: Env, conf: Record<string, string>, q: S
     params.push(todayStart - 86400, todayStart + 86400);
   }
 
-  let orderBy = 'source_id DESC';
+  let orderBy = 'is_top DESC, source_id DESC';
   const title = (q.title || '').trim();
   if (title) {
     // Align with PHP: 0 exact-ish LIKE, 1 fuzzy = segmented tokens AND (len>1), 2 = OR any token
