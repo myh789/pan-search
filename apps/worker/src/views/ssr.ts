@@ -1,6 +1,7 @@
 import type { Env } from '../env';
-import { PAN_LABELS } from '@pan-search/shared';
 import { APP_CSS, M_CSS } from '../static/css-bundle';
+import { panIconSrc } from '../static/pan-icons';
+import { getHotList, getSameList } from '../services/source';
 
 function esc(s: any) {
   return String(s ?? '')
@@ -10,8 +11,109 @@ function esc(s: any) {
     .replace(/"/g, '&quot;');
 }
 
-function panName(t: number) {
-  return PAN_LABELS[t] || '夸克网盘';
+/** ThinkPHP empty：空串 / 0 / 未设 时显示「提交需求」 */
+function showDemand(conf: Record<string, string>) {
+  const v = conf.app_demand;
+  return v === undefined || v === null || v === '' || v === '0';
+}
+
+/** 完整网盘名（对齐原版文案） */
+export function panFullName(t: number) {
+  const map: Record<number, string> = {
+    0: '夸克网盘',
+    1: '阿里云盘',
+    2: '百度网盘',
+    3: 'UC网盘',
+    4: '迅雷网盘',
+  };
+  return map[t] ?? '夸克网盘';
+}
+
+function highlightTitle(title: string, keyword: string) {
+  const raw = String(title || '');
+  const kw = String(keyword || '').trim();
+  if (!kw) return esc(raw);
+  const tokens = kw
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  let out = esc(raw);
+  let changed = false;
+  for (const t of tokens) {
+    const re = new RegExp(`(${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+    const next = out.replace(re, '<span>$1</span>');
+    if (next !== out) changed = true;
+    out = next;
+  }
+  return changed ? `<p>${out}</p>` : out;
+}
+
+function renderHotSidebar(hotList: { name: string; image: string; list: any[] }[]) {
+  if (!hotList?.length) return '';
+  return hotList
+    .map((vo) => {
+      const items = (vo.list || [])
+        .slice(0, 5)
+        .map(
+          (vos: any, i: number) =>
+            `<a href="/s/${encodeURIComponent(vos.title)}.html" class="item"><p><span>${i + 1}</span>${esc(
+              vos.title
+            )}</p></a>`
+        )
+        .join('');
+      return `<div class="nav">${
+        vo.image ? `<img src="${esc(vo.image)}" alt="${esc(vo.name)}"/>` : ''
+      }${esc(vo.name)}</div><div class="box"><div class="list">${items}</div></div>`;
+    })
+    .join('');
+}
+
+function elPagination(name: string, page: number, totalPages: number, cate: string) {
+  if (totalPages <= 1) return '';
+  const href = (p: number) =>
+    `/s/${encodeURIComponent(name)}-${p}${cate ? '-' + cate : ''}.html`;
+  const nums: string[] = [];
+  const start = Math.max(1, page - 1);
+  const end = Math.min(totalPages, start + 2);
+  for (let i = start; i <= end; i++) {
+    nums.push(
+      i === page
+        ? `<li class="number is-active">${i}</li>`
+        : `<li class="number"><a href="${href(i)}">${i}</a></li>`
+    );
+  }
+  return `<div class="page">
+    <div class="el-pagination is-background">
+      ${
+        page > 1
+          ? `<button type="button" class="btn-prev" onclick="location.href='${href(page - 1)}'">‹</button>`
+          : `<button type="button" class="btn-prev" disabled>‹</button>`
+      }
+      <ul class="el-pager">${nums.join('')}</ul>
+      ${
+        page < totalPages
+          ? `<button type="button" class="btn-next" onclick="location.href='${href(page + 1)}'">›</button>`
+          : `<button type="button" class="btn-next" disabled>›</button>`
+      }
+    </div>
+  </div>`;
+}
+
+function elEmpty(conf: Record<string, string>, tipHtml: string) {
+  const img = conf.search_bg
+    ? `<img src="${esc(conf.search_bg)}" style="width:200px"/>`
+    : '';
+  return `<div class="el-empty" style="margin-top:10%;text-align:center;padding:24px">
+    <div class="el-empty__image">${img}</div>
+    <div class="el-empty__description"><p>${esc(conf.search_tips || '未找到，可换个关键词尝试哦~')}</p></div>
+    ${tipHtml}
+  </div>`;
+}
+
+function elAlert(msg: string) {
+  return `<div style="padding-top:16px"><div class="el-alert el-alert--error is-center" style="padding:12px 0;font-weight:bold;background:#fef0f0;color:#f56c6c;border-radius:4px;text-align:center">${esc(
+    msg
+  )}</div></div>`;
 }
 
 export function layout(
@@ -23,6 +125,7 @@ export function layout(
     body: string;
     keyword?: string;
     fixed?: boolean;
+    homeReferrerNever?: boolean;
     extraScript?: string;
   }
 ) {
@@ -38,14 +141,16 @@ export function layout(
     conf.app_name && conf.app_name_hide !== '1'
       ? `<div class="title">${esc(conf.app_name)}</div>`
       : '';
+  const appNameJs = JSON.stringify(conf.app_name || '');
+  const pcTypeConf = Number(conf.pc_type || 0);
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,user-scalable=no,maximum-scale=1.0"/>
 <meta name="renderer" content="webkit"/>
-<meta name="referrer" content="no-referrer"/>
+<meta name="referrer" content="${opts.homeReferrerNever ? 'never' : 'no-referrer'}"/>
 <title>${esc(opts.title)}</title>
 <meta name="keywords" content="${esc(opts.keywords || conf.app_keywords)}"/>
 <meta name="description" content="${esc(opts.description || conf.app_description)}"/>
@@ -59,26 +164,26 @@ ${conf.app_icon ? `<link rel="icon" href="${esc(conf.app_icon)}"/>` : ''}
   --theme-other_background: ${esc(other)};
 }
 ${conf.home_css || ''}
-.icon-sousuo:before { content: "🔍"; font-style: normal; }
-.icon-xiala:before { content: "▾"; font-style: normal; }
-.icon-caidan:before { content: "☰"; font-style: normal; }
-.icon-fenxiang1:before { content: "⎘"; font-style: normal; margin-right: 4px; }
-.icon-fangwen:before { content: "↗"; font-style: normal; margin-right: 4px; }
+/* Element Plus 轻量替代（原版依赖 index.min.css） */
+.el-pagination { display:inline-flex; align-items:center; gap:6px; }
+.el-pagination .btn-prev,.el-pagination .btn-next {
+  min-width:32px; height:32px; border:0; border-radius:2px; background:var(--theme-other_background);
+  color:var(--theme-color); cursor:pointer;
+}
+.el-pagination .el-pager { display:inline-flex; list-style:none; margin:0; padding:0; gap:6px; }
+.el-pagination .el-pager li {
+  min-width:32px; height:32px; line-height:32px; text-align:center; border-radius:2px;
+  background:var(--theme-other_background); cursor:pointer;
+}
+.el-pagination .el-pager li a { color:inherit; display:block; }
+.el-pagination.is-background .el-pager li.is-active {
+  background-color:var(--theme-theme)!important; color:var(--theme-other_background)!important;
+}
 .modal-mask { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:999; display:none; align-items:center; justify-content:center; }
 .modal-mask.show { display:flex; }
-.modal { background:#fff; border-radius:12px; padding:20px; width:min(320px,90vw); }
-.modal textarea { width:100%; min-height:90px; border:1px solid #eee; border-radius:8px; padding:10px; }
-.modal .vbtn { margin-top:12px; text-align:center; background:var(--theme-theme); color:#fff; padding:10px; border-radius:8px; cursor:pointer; }
-.source-switch { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
-.switch-items a { margin-right:10px; padding:4px 12px; border-radius:16px; background:#f0f0f0; }
-.switch-items a.active { background:var(--theme-theme); color:#fff; }
-.listBox .left .list .item .btns { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-.listBox .left .list .item .btns .btn { display:inline-flex; align-items:center; padding:6px 12px; border-radius:6px; background:#f5f5f5; cursor:pointer; font-size:13px; }
-.listBox .left .list .item .btns .btn:hover { color:var(--theme-theme); }
-.page { display:flex; gap:8px; justify-content:center; margin:20px 0; }
-.page a, .page span { padding:6px 12px; border-radius:6px; background:#fff; border:1px solid #eee; }
-.page .cur { background:var(--theme-theme); color:#fff; border-color:transparent; }
 .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.78); color:#fff; padding:8px 16px; border-radius:8px; z-index:1000; display:none; }
+.listBox .left .list .item .btns .btn .icon { width:16px; height:16px; margin-right:4px; vertical-align:middle; }
+.details .cat .r .icon { width:18px; height:18px; margin-right:6px; vertical-align:middle; }
 </style>
 ${conf.seo_statistics || ''}
 </head>
@@ -88,14 +193,14 @@ ${conf.seo_statistics || ''}
   <div class="headerBox">
     <div class="bg" id="headerBg" style="opacity:${opts.fixed ? 0 : 1}"></div>
     <div class="box">
-      <a href="/" class="logoBox">${logo}${name}</a>
-      <div class="search">
+      <a href="/" class="logoBox" id="headerLogo">${logo}${name}</a>
+      <div class="search" id="headerSearch">
         <input id="kwHeader" type="text" value="${kw}" placeholder="输入关键字进行搜索" />
-        <div class="btn" onclick="goSearch(document.getElementById('kwHeader').value)"><i class="iconfont icon-sousuo"></i></div>
+        <div class="btn" onclick="searchBtn(document.getElementById('kwHeader').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
       <div class="navs">
         ${conf.qcode ? `<div class="item" onclick="showModal('qcodeModal')">加入群聊</div>` : ''}
-        ${conf.app_demand === '0' || conf.app_demand === '' ? `<div class="item" onclick="showModal('demandModal')">提交需求</div>` : ''}
+        ${showDemand(conf) ? `<div class="item" onclick="showModal('demandModal')">提交需求</div>` : ''}
         <div class="btns">${conf.app_links || ''}</div>
         <div class="iconfont icon-caidan" onclick="showModal('drawerModal')"></div>
       </div>
@@ -107,79 +212,138 @@ ${conf.seo_statistics || ''}
 
   <div class="footerBox"><div class="box">
     <p>${conf.footer_dec || ''}</p>
-    <p>${conf.footer_copyright || ''}</p>
+    <p>${conf.footer_copyright || ''} <a href="/sitemap.xml" target="_blank">网站地图</a></p>
   </div></div>
 </div>
 
 <div id="qcodeModal" class="modal-mask" onclick="if(event.target===this)hideModal('qcodeModal')">
-  <div class="modal">${conf.qcode ? `<img src="${esc(conf.qcode)}" style="width:100%"/>` : ''}</div>
+  <div class="el-dialog" style="width:300px;background:var(--theme-other_background);border-radius:8px;padding:16px">
+    ${conf.qcode ? `<img src="${esc(conf.qcode)}" style="width:100%"/>` : ''}
+  </div>
 </div>
 <div id="demandModal" class="modal-mask" onclick="if(event.target===this)hideModal('demandModal')">
-  <div class="modal">
-    <div class="vname" style="font-weight:bold;margin-bottom:10px">提交需求</div>
-    <textarea id="demandText" placeholder="请输入你想看的资源信息~"></textarea>
-    <div class="vbtn" onclick="submitDemand()">提交</div>
+  <div class="el-dialog" style="width:300px;background:var(--theme-other_background);border-radius:8px;padding:16px">
+    <div class="layerBox">
+      <div class="vname">提交需求</div>
+      <textarea id="demandText" placeholder="请输入你想看的资源信息~" style="width:100%;min-height:90px;border:1px solid #eee;border-radius:8px;padding:10px"></textarea>
+      <div class="vbtn" onclick="submitDemand()">提交</div>
+    </div>
   </div>
 </div>
 <div id="drawerModal" class="modal-mask" onclick="if(event.target===this)hideModal('drawerModal')">
-  <div class="modal">
-    ${conf.qcode ? `<div class="item" style="padding:10px 0;cursor:pointer" onclick="hideModal('drawerModal');showModal('qcodeModal')">加入群聊</div>` : ''}
-    ${conf.app_demand === '0' || conf.app_demand === '' ? `<div class="item" style="padding:10px 0;cursor:pointer" onclick="hideModal('drawerModal');showModal('demandModal')">提交需求</div>` : ''}
-    <div>${conf.app_links || ''}</div>
+  <div class="el-dialog" style="width:300px;background:var(--theme-other_background);border-radius:8px;padding:16px">
+    <div class="drawer">
+      ${conf.qcode ? `<div class="item" onclick="hideModal('drawerModal');showModal('qcodeModal')">加入群聊</div>` : ''}
+      ${showDemand(conf) ? `<div class="item" onclick="hideModal('drawerModal');showModal('demandModal')">提交需求</div>` : ''}
+      <div class="btns">${conf.app_links || ''}</div>
+    </div>
   </div>
 </div>
 <div id="urlModal" class="modal-mask" onclick="if(event.target===this)hideModal('urlModal')">
-  <div class="modal" style="width:min(420px,92vw)">
-    <div id="urlModalBody"></div>
+  <div class="el-dialog dialogUrlBox" style="width:min(420px,92vw);background:var(--theme-other_background);border-radius:8px;padding:0">
+    <div class="dialogUrl" id="urlModalBody"></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
 
 <script>
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',1800)}
+var APP_NAME=${appNameJs};
+var pc_type=${pcTypeConf};
+var is_m=0;
+function handleDeviceType(){
+  var mobile=window.matchMedia('(max-width: 768px)').matches;
+  is_m=mobile?1:0;
+  pc_type=mobile?1:${pcTypeConf};
+}
+handleDeviceType();
+window.addEventListener('resize',handleDeviceType);
+
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(function(){t.style.display='none'},1800)}
 function showModal(id){document.getElementById(id).classList.add('show')}
 function hideModal(id){document.getElementById(id).classList.remove('show')}
-function goSearch(kw){
+function searchBtn(kw){
   kw=(kw||'').trim();
   if(!kw){toast('请输入你要搜索的内容~');return}
-  location.href='/s/'+encodeURIComponent(kw)+'.html';
+  var target='/s/'+encodeURIComponent(kw)+'.html';
+  var cur=location.href;
+  if(cur.indexOf('/s/')>=0||cur.indexOf('/d/')>=0) location.href=target;
+  else window.open(target,'_blank');
 }
 async function submitDemand(){
-  const content=document.getElementById('demandText').value.trim();
+  var content=document.getElementById('demandText').value.trim();
   if(!content){toast('请输入你想看的资源信息~');return}
-  const fd=new URLSearchParams({content});
-  const r=await fetch('/api/tool/feedback',{method:'POST',body:fd});
-  const j=await r.json();
+  var fd=new URLSearchParams({content:content});
+  var r=await fetch('/api/tool/feedback',{method:'POST',body:fd});
+  var j=await r.json();
   toast(j.message||'已提交');
-  hideModal('demandModal');
+  if(j.code===200) hideModal('demandModal');
 }
 function copyText(title,url,code){
-  const text=title+'\\n'+url+(code?('\\n提取码：'+code):'');
-  navigator.clipboard.writeText(text).then(()=>toast('复制成功')).catch(()=>toast('复制失败'));
+  var text='标题：'+title+'\\n链接：'+url;
+  if(code) text+='\\n提取码：'+code;
+  text+='\\n由【'+APP_NAME+location.hostname+'】提供网盘分享链接';
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(function(){toast('复制成功')}).catch(function(){fallbackCopy(text)});
+  } else fallbackCopy(text);
 }
-function openLink(url, title, code, is_type, pc_type){
-  pc_type=Number(pc_type||0);
-  if(pc_type===1){ window.open(url,'_blank'); return; }
-  const body=document.getElementById('urlModalBody');
-  let html='';
-  if(pc_type!==1){
-    const tip = is_type==0?'夸克APP':(is_type==3?'UC浏览器':'手机扫码');
-    html += '<div style="text-align:center;margin-bottom:10px">请使用 <b>'+tip+'</b> 扫码获取</div>';
-    html += '<div style="text-align:center"><img alt="qr" width="180" height="180" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data='+encodeURIComponent(url)+'"/></div>';
+function fallbackCopy(text){
+  var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+  document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); toast('复制成功'); }catch(e){ toast('复制失败，请手动复制'); }
+  document.body.removeChild(ta);
+}
+function safeJump(url, target){
+  target=target||'_blank';
+  var a=document.createElement('a'); a.href=url; a.rel='noreferrer'; a.target=target;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+function openLink(url, title, code, is_type){
+  if(Number(pc_type)===1){ safeJump(url); return; }
+  showUrlFun({ title:title, showUrl:url, url:url, code:code||'', is_type:Number(is_type||0), message:'' });
+}
+function showUrlFun(item){
+  var body=document.getElementById('urlModalBody');
+  var html='';
+  if(item.showUrl){
+    if(Number(pc_type)!==1){
+      var tipTitle='手机扫码', tipDesc='打开微信APP- 点击右上角 - 选择扫一扫';
+      if(item.is_type==0){ tipTitle='夸克APP'; tipDesc='打开夸克APP- 点击搜索框中的相机 - 点击扫码'; }
+      else if(item.is_type==3){ tipTitle='UC浏览器'; tipDesc='打开UC浏览器- 点击搜索框中的相机 - 点击扫码'; }
+      html+='<div class="title">请使用 <span>'+tipTitle+'</span> 扫码获取</div>';
+      html+='<div class="tips">'+tipDesc+'</div>';
+      html+='<div class="qrcode" id="qrcode"><img alt="qr" width="120" height="120" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(item.showUrl)+'"/></div>';
+    }
+    html+='<div class="nav"><div class="item"><span class="t">'+(item.title||'')+'</span></div>';
+    if(Number(pc_type)!==2){
+      html+='<div class="item"><span>资源地址：</span><a href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">'+item.showUrl+'</a></div>';
+    }
+    if(item.code) html+='<div class="item"><span>提取码：</span><span style="color:#FF3F3D">'+item.code+'</span></div>';
+    html+='</div>';
+  } else {
+    html+='<div class="title">获取失败</div><div class="tips" style="color:#FF3F3D">'+(item.message||'未知错误')+'</div>';
   }
-  html += '<div style="margin-top:12px;word-break:break-all"><b>'+(title||'')+'</b><div>'+url+'</div>'+(code?('<div>提取码：<span style="color:#FF3F3D">'+code+'</span></div>'):'')+'</div>';
-  if(pc_type!==2) html += '<div style="margin-top:12px;text-align:center"><a href="'+url+'" target="_blank" rel="noopener" style="color:var(--theme-theme)">直接打开</a></div>';
+  html+='<div class="statement"><div class="content"><p>🔔 声明：本站链接均由程序自动收集自公开网盘，不存储、不传播任何文件，跳转链接指向网盘官网。</p><p>文件内容请自行辨别，如发现违规请向网盘平台举报。本站仅供学习交流，无任何收费行为。</p></div></div>';
   body.innerHTML=html;
   showModal('urlModal');
 }
-window.addEventListener('scroll',()=>{
-  const bg=document.getElementById('headerBg');
+window.addEventListener('scroll',function(){
+  var bg=document.getElementById('headerBg');
   if(!bg) return;
-  const y=window.scrollY||0;
-  const th=150;
-  bg.style.opacity = y>=th ? Math.min((y-th)/100,1) : Math.max(1-(th-y)/100,0);
+  var y=window.scrollY||0, th=150;
+  var op=y>=th ? Math.min((y-th)/100,1) : Math.max(1-(th-y)/100,0);
+  bg.style.opacity=op;
+  ${
+    opts.fixed
+      ? `var logo=document.getElementById('headerLogo'); var search=document.getElementById('headerSearch');
+  if(logo) logo.style.opacity=op; if(search) search.style.opacity=op;`
+      : ''
+  }
+  if(is_m){
+    var box=document.querySelector('.listBox .screen .fixed .box');
+    if(box && box.style.display==='block') box.style.display='none';
+  }
 });
-document.getElementById('kwHeader')?.addEventListener('keyup',e=>{ if(e.key==='Enter') goSearch(e.target.value) });
+document.getElementById('kwHeader')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
 ${opts.extraScript || ''}
 </script>
 </body></html>`;
@@ -203,11 +367,13 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
     const items = (news.results || [])
       .map((x: any, i: number) => {
         if (withImg) {
-          return `<a href="/d/${x.id}.html" target="_blank" class="item"><div class="img"><span class="titleLoading">${esc(
+          return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><div class="img"><span class="titleLoading">${esc(
             String(x.title).slice(0, 20)
-          )}</span></div><p>${esc(x.title)}</p></a>`;
+          )}${String(x.title).length > 20 ? '...' : ''}</span></div><p>${esc(x.title)}</p></a>`;
         }
-        return `<a href="/d/${x.id}.html" target="_blank" class="item"><p><span>${i + 1}</span>${esc(x.title)}</p></a>`;
+        return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><p><span>${i + 1}</span>${esc(
+          x.title
+        )}</p></a>`;
       })
       .join('');
     newBlock = `<div class="block"><div class="nav">${
@@ -216,7 +382,9 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   }
 
   const blocks: string[] = [];
+  const rankList: { name: string; is_sys: number }[] = [];
   for (const cat of cats.results || []) {
+    rankList.push({ name: cat.name, is_sys: Number(cat.is_sys) });
     let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
     if (!list?.length) {
       const local = await env.DB.prepare(
@@ -230,11 +398,18 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       .map((x: any, i: number) => {
         const href = x.id ? `/d/${x.id}.html` : `/s/${encodeURIComponent(x.title)}.html`;
         if (withImg) {
-          return `<a href="${href}" target="_blank" class="item"><div class="img"><span class="titleLoading">${esc(
-            String(x.title || '').slice(0, 20)
-          )}</span></div><p>${esc(x.title)}</p></a>`;
+          const src = x.src
+            ? `<img src="${esc(x.src)}" alt="${esc(x.title)}"/><span>Loading...</span>`
+            : `<span class="titleLoading">${esc(String(x.title || '').slice(0, 20))}${
+                String(x.title || '').length > 20 ? '...' : ''
+              }</span>`;
+          return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><div class="img">${src}</div><p>${esc(
+            x.title
+          )}</p></a>`;
         }
-        return `<a href="${href}" target="_blank" class="item"><p><span>${i + 1}</span>${esc(x.title)}</p></a>`;
+        return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><p><span>${i + 1}</span>${esc(
+          x.title
+        )}</p></a>`;
       })
       .join('');
     blocks.push(
@@ -257,27 +432,34 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       ${conf.app_subname ? `<div class="subTitle">${esc(conf.app_subname)}</div>` : ''}
       <div class="search">
         <input id="kwHome" type="text" placeholder="输入关键字进行搜索"/>
-        <div class="btn" onclick="goSearch(document.getElementById('kwHome').value)"><i class="iconfont icon-sousuo"></i></div>
+        <div class="btn" onclick="searchBtn(document.getElementById('kwHome').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
     </div>
     <div class="home ${withImg ? '' : 'homeNO'}">${newBlock}${blocks.join('')}</div>
-  </div>
-  <script>
-  document.getElementById('kwHome')?.addEventListener('keyup',e=>{ if(e.key==='Enter') goSearch(e.target.value) });
-  // hide extra items on mobile for ranking_m_num
+  </div>`;
+
+  const extraScript = `
+  document.getElementById('kwHome')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
   (function(){
-    const m=${mLimit};
+    var m=${mLimit};
     if(!/Mobile/i.test(navigator.userAgent)) return;
-    document.querySelectorAll('.home .content .list').forEach(list=>{
-      [...list.children].forEach((el,i)=>{ if(i>=m) el.style.display='none'; });
+    document.querySelectorAll('.home .content .list').forEach(function(list){
+      Array.prototype.forEach.call(list.children, function(el,i){ if(i>=m) el.style.display='none'; });
     });
   })();
-  </script>`;
+  var rankList=${JSON.stringify(rankList)};
+  rankList.forEach(function(item){
+    if(item.is_sys!=1) return;
+    fetch('/api/tool/ranking?channel='+encodeURIComponent(item.name)).catch(function(){});
+  });
+  `;
 
   return layout(conf, {
     title: `${conf.app_name} - ${conf.app_title}`,
     body,
     fixed: true,
+    homeReferrerNever: true,
+    extraScript,
   });
 }
 
@@ -291,13 +473,22 @@ export async function renderList(
   categories: any[],
   panTabs: { type: number; name: string }[]
 ) {
-  const banned = (conf.ban_keywords || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const banned = (conf.ban_keywords || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   const blocked = banned.some((k) => k && name.includes(k));
   const items = blocked ? [] : list.items || [];
   const quan = conf.is_quan === '1';
   const pageSize = list.page_size || 20;
-  const total = list.total_result || 0;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const total = blocked ? 0 : list.total_result || 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const hotList = await getHotList(env, 5);
+  const firstPan = panTabs[0]?.type ?? 0;
+
+  const cateLabel =
+    categories.find((c) => String(c.source_category_id) === String(cate))?.name || '全部';
+  const cateSelectText = cate ? esc(cateLabel) : '全部';
 
   const cateLinks = [
     `<a href="/s/${encodeURIComponent(name)}.html" class="${!cate ? 'active' : ''}">全部</a>`,
@@ -310,53 +501,70 @@ export async function renderList(
   ].join('');
 
   const panLinks = panTabs
-    .map((p) => `<a href="javascript:;" data-type="${p.type}" class="pan-tab">${esc(p.name)}</a>`)
+    .map(
+      (p) =>
+        `<a href="javascript:;" class="pan-tab${p.type === firstPan ? ' active' : ''}" data-type="${
+          p.type
+        }" onclick="setType(${p.type})">${esc(p.name)}</a>`
+    )
     .join('');
 
-  const listHtml = items.length
-    ? items
-        .map(
-          (it: any) => `
-    <div class="item">
-      <a href="javascript:;" class="title" onclick="openLink('${esc(it.url)}','${esc(it.title)}','${esc(
-            it.code || ''
-          )}',${Number(it.is_type || 0)},${Number(conf.pc_type || 0)})">${esc(it.title)}</a>
-      <div class="type time">${esc(it.times || '')}</div>
-      <div class="type"><span>来源：${esc(panName(Number(it.is_type || 0)))}</span>${
+  let localInner = '';
+  if (items.length) {
+    const rows = items
+      .map((it: any, key: number) => {
+        const t = Number(it.is_type || 0);
+        return `<div class="item">
+          <a href="javascript:;" onclick="linkBtn(this)" data-index="${key}" class="title">${highlightTitle(
+            it.title,
+            name
+          )}</a>
+          <div class="type time">${esc(it.times || '')}</div>
+          <div class="type"><span>来源：${esc(panFullName(t))}</span>${
             it.code ? `<span>提取码：<span>${esc(it.code)}</span></span>` : ''
           }</div>
-      <div class="btns">
-        <div class="btn" onclick="copyText('${esc(it.title)}','${esc(it.url)}','${esc(it.code || '')}')"><i class="iconfont icon-fenxiang1"></i>复制分享</div>
-        <a href="/d/${it.id}.html" class="btn"><i class="iconfont icon-fangwen"></i>查看详情</a>
-        <a href="javascript:;" class="btn" onclick="openLink('${esc(it.url)}','${esc(it.title)}','${esc(
-            it.code || ''
-          )}',${Number(it.is_type || 0)},${Number(conf.pc_type || 0)})">立即访问</a>
-      </div>
-    </div>`
-        )
-        .join('')
-    : `<div class="empty muted" style="padding:40px;text-align:center">${esc(
-        conf.search_tips || '未找到，可换个关键词尝试哦~'
-      )}${conf.search_bg ? `<div><img src="${esc(conf.search_bg)}" style="max-width:220px;margin-top:12px"/></div>` : ''}</div>`;
-
-  const pages: string[] = [];
-  if (page > 1) {
-    pages.push(
-      `<a href="/s/${encodeURIComponent(name)}-${page - 1}${cate ? '-' + cate : ''}.html">上一页</a>`
-    );
-  }
-  pages.push(`<span class="cur">${page}/${totalPages}</span>`);
-  if (page < totalPages) {
-    pages.push(
-      `<a href="/s/${encodeURIComponent(name)}-${page + 1}${cate ? '-' + cate : ''}.html">下一页</a>`
-    );
+          <div class="btns">
+            <div class="btn" onclick="copyItem(${key})"><i class="iconfont icon-fenxiang1"></i>复制分享</div>
+            <a href="/d/${it.id}.html" class="btn"><i class="iconfont icon-fangwen"></i>查看详情</a>
+            <a href="javascript:;" onclick="linkBtn(this)" data-index="${key}" class="btn">
+              <img src="${panIconSrc(t)}" class="icon" alt="立即访问"/>立即访问
+            </a>
+          </div>
+        </div>`;
+      })
+      .join('');
+    localInner = `${
+      quan
+        ? `<div class="Qbtn"><div class="btn"><p>为您找到【<span>${esc(
+            name
+          )}</span>】相关资源<span>&nbsp;${total}&nbsp;</span>条</p></div></div>`
+        : ''
+    }
+      <div class="list">${rows}</div>
+      ${elPagination(name, page, totalPages, cate)}`;
+  } else {
+    localInner = `${blocked ? elAlert('搜索词中包含违规内容，请修改后重试') : ''}
+      ${elEmpty(
+        conf,
+        quan
+          ? `<div class="vtips" onclick="switchSource(1)">请尝试切换&nbsp;“<a href="javascript:;">全网搜</a>”&nbsp;获取资源</div>`
+          : ''
+      )}`;
   }
 
   const body = `
   <div class="searchBox searchList">
     <div class="search">
+      <div class="select" id="selectLocal" onclick="selectBtn()">
+        ${cateSelectText}
+        <i class="iconfont icon-xiala" style="font-size:3vw"></i>
+      </div>
+      <div class="select" id="selectWeb" style="display:none" onclick="selectBtn()">
+        <span id="selectWebLabel">${esc(panTabs[0]?.name || '夸克')}</span>
+        <i class="iconfont icon-xiala" style="font-size:3vw"></i>
+      </div>
       <input id="kwList" type="text" value="${esc(name)}" placeholder="输入关键字进行搜索"/>
-      <div class="btn" onclick="goSearch(document.getElementById('kwList').value)"><i class="iconfont icon-sousuo"></i></div>
+      <div class="btn" onclick="searchBtn(document.getElementById('kwList').value)"><i class="iconfont icon-sousuo"></i></div>
     </div>
   </div>
   <div class="listBox">
@@ -372,75 +580,168 @@ export async function renderList(
               <a href="javascript:;" id="tabLocal" class="active" onclick="switchSource(0)">本地搜</a>
               <a href="javascript:;" id="tabWeb" onclick="switchSource(1)">全网搜</a>
             </div></div>`
-          : ''
+          : `<h3>为您找到【<span>${esc(name)}</span>】相关资源<span>&nbsp;${total}&nbsp;</span>条</h3>`
       }
-      <div id="localPane">
-        <div class="Qbtn"><div class="btn"><p>为您找到【<span>${esc(name)}</span>】相关资源<span>&nbsp;${total}&nbsp;</span>条</p></div></div>
-        <div class="list">${listHtml}</div>
-        <div class="page">${pages.join('')}</div>
-      </div>
-      <div id="webPane" style="display:none">
-        <div class="Qbtn"><div class="btn"><p>全网搜索【<span>${esc(name)}</span>】</p></div></div>
-        <div class="list" id="webList"><div class="muted" style="padding:20px">点击「全网搜」开始…</div></div>
+      <div class="box" id="localPane">${localInner}</div>
+      <div class="Ebox" id="webPane" style="display:none">
+        <div class="Qloading" id="webLoading" style="display:none"><div class="loader"></div></div>
+        <div class="Qbtn"><div class="btn"><p>为您找到【<span>${esc(
+          name
+        )}</span>】相关资源<span>&nbsp;<span id="webCount">0</span>&nbsp;</span>条</p></div></div>
+        <div class="list" id="webList"></div>
+        <div id="webEmpty" style="display:none">
+          ${elEmpty(
+            conf,
+            quan
+              ? `<div class="vtips" onclick="switchSource(0)">请尝试切换&nbsp;“<a href="javascript:;">本地搜</a>”&nbsp;获取资源</div>`
+              : ''
+          )}
+        </div>
       </div>
     </div>
+    <div class="right">${renderHotSidebar(hotList)}</div>
   </div>`;
 
+  const listJson = JSON.stringify(
+    items.map((it: any) => ({
+      title: it.title,
+      url: it.url,
+      code: it.code || '',
+      is_type: Number(it.is_type || 0),
+      id: it.id,
+    }))
+  );
+
   const extraScript = `
-  document.getElementById('kwList')?.addEventListener('keyup',e=>{ if(e.key==='Enter') goSearch(e.target.value) });
-  let currentSource=0; let currentPan=0; let esRef=null;
-  function switchSource(v){
-    currentSource=v;
-    document.getElementById('tabLocal')?.classList.toggle('active', v===0);
-    document.getElementById('tabWeb')?.classList.toggle('active', v===1);
-    document.getElementById('localPane').style.display=v===0?'block':'none';
-    document.getElementById('webPane').style.display=v===1?'block':'none';
-    document.getElementById('filterLocal').style.display=v===0?'block':'none';
-    document.getElementById('filterWeb').style.display=v===1?'block':'none';
-    if(v===1) startWebSearch(currentPan);
+  document.getElementById('kwList')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
+  var currentSource=0, is_type=${firstPan}, QList=[], QLoading=false, currentEventSource=null;
+  var localItems=${listJson};
+  var panNames=${JSON.stringify(Object.fromEntries(panTabs.map((p) => [p.type, p.name])))};
+
+  function selectBtn(){
+    if(!is_m) return;
+    var boxes=document.querySelectorAll('.listBox .screen .fixed .box');
+    var box=currentSource===1?boxes[1]:boxes[0];
+    if(!box) return;
+    if(box.style.display==='none'||box.style.display==='') box.style.display='block';
+    else box.style.display='';
   }
-  document.querySelectorAll('.pan-tab').forEach(a=>{
-    a.addEventListener('click',()=>{
-      document.querySelectorAll('.pan-tab').forEach(x=>x.classList.remove('active'));
-      a.classList.add('active');
-      currentPan=Number(a.getAttribute('data-type')||0);
-      startWebSearch(currentPan);
+  function linkBtn(el){
+    var index=Number(el.getAttribute('data-index'));
+    var item=localItems[index];
+    if(!item) return;
+    if(pc_type==1) safeJump(item.url);
+    else { item.showUrl=item.url; showUrlFun(item); }
+  }
+  function copyItem(index){
+    var item=localItems[index];
+    if(!item) return;
+    copyText(item.title,item.url,item.code||'');
+  }
+  function setType(type){
+    selectBtn();
+    if(type==is_type && currentSource==1 && QList.length) return;
+    is_type=type;
+    QLoading=false; QList=[];
+    document.getElementById('selectWebLabel').textContent=panNames[type]||'夸克';
+    document.querySelectorAll('.pan-tab').forEach(function(a){
+      a.classList.toggle('active', Number(a.getAttribute('data-type'))===type);
     });
-  });
-  document.querySelector('.pan-tab')?.classList.add('active');
-  function startWebSearch(t){
-    if(esRef){ try{esRef.close()}catch(e){} }
-    const el=document.getElementById('webList');
-    el.innerHTML='<div class="muted" style="padding:20px">搜索中…</div>';
-    let first=true;
-    esRef=new EventSource('/api/other/web_search?title='+encodeURIComponent(${JSON.stringify(
-      name
-    )})+'&is_type='+t);
-    esRef.onmessage=async (ev)=>{
-      if(String(ev.data).startsWith('[DONE]')){ esRef.close(); if(first) el.innerHTML='<div class="muted" style="padding:20px">暂无结果</div>'; return; }
+    switchSource(1);
+  }
+  function switchSource(source){
+    currentSource=source;
+    document.getElementById('tabLocal')?.classList.toggle('active', source===0);
+    document.getElementById('tabWeb')?.classList.toggle('active', source===1);
+    document.getElementById('localPane').style.display=source===0?'block':'none';
+    document.getElementById('webPane').style.display=source===1?'block':'none';
+    document.getElementById('filterLocal').style.display=source===0?'':'none';
+    document.getElementById('filterWeb').style.display=source===1?'':'none';
+    document.getElementById('selectLocal').style.display=source===0?'':'none';
+    document.getElementById('selectWeb').style.display=source===1?'':'none';
+    if(source===1){
+      if(QLoading||QList.length>0) return;
+      startWebSearch();
+    }
+  }
+  function startWebSearch(){
+    if(currentEventSource){ try{currentEventSource.close()}catch(e){} }
+    QLoading=true; QList=[];
+    document.getElementById('webLoading').style.display='block';
+    document.getElementById('webList').innerHTML='';
+    document.getElementById('webEmpty').style.display='none';
+    document.getElementById('webCount').textContent='0';
+    var params=new URLSearchParams({ title:${JSON.stringify(name)}, is_type:String(is_type) });
+    currentEventSource=new EventSource('/api/other/web_search?'+params.toString());
+    currentEventSource.onmessage=function(event){
+      if(String(event.data).indexOf('[DONE]')>=0){
+        currentEventSource.close(); currentEventSource=null; QLoading=false;
+        document.getElementById('webLoading').style.display='none';
+        if(!QList.length) document.getElementById('webEmpty').style.display='block';
+        return;
+      }
       try{
-        const item=JSON.parse(ev.data);
-        if(first){ el.innerHTML=''; first=false; }
-        const row=document.createElement('div');
-        row.className='item';
-        const title=document.createElement('a');
-        title.className='title'; title.href='javascript:;'; title.textContent=item.title||'';
-        title.onclick=()=>saveAndOpen(item);
-        const meta=document.createElement('div'); meta.className='type'; meta.textContent='全网搜结果';
-        const btns=document.createElement('div'); btns.className='btns';
-        const b=document.createElement('div'); b.className='btn'; b.textContent='获取链接'; b.onclick=()=>saveAndOpen(item);
-        btns.appendChild(b); row.appendChild(title); row.appendChild(meta); row.appendChild(btns); el.appendChild(row);
+        var data=JSON.parse(event.data);
+        QList.push(data);
+        document.getElementById('webCount').textContent=String(QList.length);
+        appendWebItem(data, QList.length-1);
       }catch(e){}
     };
+    currentEventSource.onerror=function(){
+      if(currentEventSource){ currentEventSource.close(); currentEventSource=null; }
+      QLoading=false;
+      document.getElementById('webLoading').style.display='none';
+      if(!QList.length) document.getElementById('webEmpty').style.display='block';
+    };
   }
-  async function saveAndOpen(item){
-    toast('正在转存…');
-    const r=await fetch('/api/other/save_url',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({url:item.url,stoken:item.stoken})});
-    const j=await r.json();
-    if(j.code!==200){ toast(j.message||'失败'); return; }
-    openLink(j.data.share_url||j.data.url, j.data.title||item.title, j.data.code||'', item.is_type||0, ${Number(
-      conf.pc_type || 0
-    )});
+  function panLabel(t){
+    t=Number(t||0);
+    if(t===1) return '来源：阿里云盘';
+    if(t===2) return '来源：百度网盘';
+    if(t===3) return '来源：UC网盘';
+    if(t===4) return '来源：迅雷网盘';
+    return '来源：夸克网盘';
+  }
+  function appendWebItem(item,index){
+    var el=document.getElementById('webList');
+    var row=document.createElement('div'); row.className='item';
+    row.innerHTML='<a href="javascript:;" onclick="getUrlBtn(this)" data-index="'+index+'" class="title"></a>'+
+      '<div class="type"><span>'+panLabel(item.is_type)+'</span></div>'+
+      '<div class="btns2" onclick="getUrlBtn(this)" data-index="'+index+'">获取资源</div>';
+    row.querySelector('.title').textContent=item.title||'';
+    el.appendChild(row);
+  }
+  async function getUrlBtn(el){
+    var index=Number(el.getAttribute('data-index'));
+    var item=QList[index];
+    if(!item) return;
+    if(String(item.url||'').indexOf('http')===0){
+      item.showUrl=item.url; showUrlFun(item); return;
+    }
+    showModal('urlModal');
+    document.getElementById('urlModalBody').innerHTML='<div class="tips" style="text-align:center;padding:24px">加载中…</div>';
+    try{
+      var r=await fetch('/api/other/save_url',{
+        method:'POST',
+        headers:{'content-type':'application/json'},
+        body:JSON.stringify({ url:encodeURIComponent(item.url), title:item.title, stoken:item.stoken })
+      });
+      var j=await r.json();
+      if(j.code==200){
+        item.url=j.data.url||j.data.share_url; item.showUrl=item.url;
+        if(j.data.code) item.code=j.data.code;
+      } else {
+        item.showUrl=''; item.message=j.message||'获取失败';
+      }
+      showUrlFun(item);
+    }catch(e){
+      item.showUrl=''; item.message='网络错误'; showUrlFun(item);
+    }
+  }
+  ${
+    quan && !blocked && items.length === 0
+      ? 'switchSource(1);'
+      : ''
   }
   `;
 
@@ -452,13 +753,26 @@ export async function renderList(
   });
 }
 
-export async function renderDetail(conf: Record<string, string>, item: any) {
+export async function renderDetail(env: Env, conf: Record<string, string>, item: any) {
   const pc = Number(conf.pc_type || 0);
+  const hotList = await getHotList(env, 5);
+  const sameList = await getSameList(env, { id: item.id, title: item.title }, 10);
+  const t = Number(item.is_type || 0);
+
+  const sameHtml = sameList
+    .map(
+      (vo: any, i: number) =>
+        `<a href="/d/${vo.source_id}.html" class="item"><p><span>${i + 1}</span>${esc(vo.title)}</p></a>`
+    )
+    .join('');
+
+  const cateSuffix = item.category_name ? ` - ${item.category_name}` : '';
+
   const body = `
   <div class="searchBox searchDetail">
     <div class="search">
       <input id="kwDetail" type="text" placeholder="输入关键字进行搜索"/>
-      <div class="btn" onclick="goSearch(document.getElementById('kwDetail').value)"><i class="iconfont icon-sousuo"></i></div>
+      <div class="btn" onclick="searchBtn(document.getElementById('kwDetail').value)"><i class="iconfont icon-sousuo"></i></div>
     </div>
   </div>
   <div class="listBox detailBox">
@@ -470,39 +784,61 @@ export async function renderDetail(conf: Record<string, string>, item: any) {
         <div class="cat"><div class="l">资源分类</div><div class="r">${esc(item.category_name || '其它')}</div></div>
         <div class="cat"><div class="l">资源描述</div><div class="r">${esc(item.vod_content || item.description || '-')}</div></div>
         <div class="cat"><div class="l">更新时间</div><div class="r">${esc(item.times || '')}</div></div>
-        <div class="cat"><div class="l">资源类型</div><div class="r">${esc(panName(Number(item.is_type || 0)))}</div></div>
+        <div class="cat"><div class="l">资源类型</div><div class="r">
+          <img src="${panIconSrc(t)}" class="icon" alt="网盘图标"/>
+          <span>${esc(panFullName(t))}</span>
+        </div></div>
         ${
           pc !== 2
-            ? `<div class="cat"><div class="l">资源地址</div><div class="r"><a href="javascript:;" class="btn" onclick="openLink('${esc(
-                item.url
-              )}','${esc(item.title)}','${esc(item.code || '')}',${Number(item.is_type || 0)},${pc})">${esc(
+            ? `<div class="cat" id="urlRow"><div class="l">资源地址</div><div class="r"><a href="javascript:;" onclick="linkBtn()" class="btn">${esc(
                 item.url
               )}</a></div></div>`
             : ''
         }
-        ${item.code ? `<div class="cat"><div class="l">提取码</div><div class="r" style="color:#FF3F3D">${esc(item.code)}</div></div>` : ''}
-        <div class="btns" style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
-          <div class="btn" style="padding:8px 14px;background:#f5f5f5;border-radius:8px;cursor:pointer" onclick="copyText('${esc(
-            item.title
-          )}','${esc(item.url)}','${esc(item.code || '')}')">复制分享</div>
-          ${
-            pc !== 2
-              ? `<a class="btn" style="padding:8px 14px;background:var(--theme-theme);color:#fff;border-radius:8px" href="javascript:;" onclick="openLink('${esc(
-                  item.url
-                )}','${esc(item.title)}','${esc(item.code || '')}',${Number(item.is_type || 0)},${pc})">立即访问</a>`
-              : ''
-          }
+        ${
+          item.code
+            ? `<div class="cat"><div class="l">提取码</div><div class="r" style="color:#FF3F3D">${esc(
+                item.code
+              )}</div></div>`
+            : ''
+        }
+        <div class="btns">
+          <div class="btn" onclick="copyText(detailItem.title,detailItem.url,detailItem.code||'')"><i class="iconfont icon-fenxiang1"></i>复制分享</div>
+          <a class="btn btnCol" href="javascript:;" onclick="linkBtn()"><i class="iconfont icon-yun_o"></i>立即访问</a>
         </div>
       </div>
+      <h3 class="samelistNav">相关资源</h3>
+      <div class="box details samelistBox">
+        <div class="samelist">${sameHtml || '<p class="muted" style="padding:12px">暂无相关资源</p>'}</div>
+      </div>
     </div>
-  </div>
-  <script>document.getElementById('kwDetail')?.addEventListener('keyup',e=>{ if(e.key==='Enter') goSearch(e.target.value) });</script>`;
+    <div class="right">${renderHotSidebar(hotList)}</div>
+  </div>`;
+
+  const detailJson = JSON.stringify({
+    title: item.title,
+    url: item.url,
+    code: item.code || '',
+    is_type: t,
+    showUrl: item.url,
+  });
+
+  const extraScript = `
+  document.getElementById('kwDetail')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
+  var detailItem=${detailJson};
+  function linkBtn(){
+    if(pc_type==1) safeJump(detailItem.url);
+    else { detailItem.showUrl=detailItem.url; showUrlFun(detailItem); }
+  }
+  if(pc_type==2){ var row=document.getElementById('urlRow'); if(row) row.style.display='none'; }
+  `;
 
   return layout(conf, {
-    title: `${item.title} - ${conf.app_name}`,
+    title: `${item.title}${cateSuffix} - ${conf.app_name}`,
     description: item.vod_content || item.description,
     keyword: '',
     body,
+    extraScript,
   });
 }
 
@@ -530,7 +866,6 @@ export async function renderSitemap(env: Env, origin: string) {
 export function parseSearchSlug(raw: string): { name: string; page: number; cate: string } {
   let slug = decodeURIComponent(raw || '');
   slug = slug.replace(/\.html$/i, '');
-  // PHP pattern: name = [^-]+ , then optional -page -cate
   const m = slug.match(/^([^-]+)(?:-(\d+)(?:-(\d+))?)?$/);
   if (m) {
     return { name: m[1] || slug, page: Number(m[2] || 1), cate: m[3] || '' };

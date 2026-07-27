@@ -129,7 +129,7 @@ async function handleSearch(c: any, slug: string) {
       'SELECT DISTINCT pantype FROM api_list WHERE status = 1 ORDER BY pantype ASC'
     ).all<{ pantype: number }>()
   ).results || [];
-  const panMap: Record<number, string> = { 0: '夸克', 2: '百度', 3: 'UC', 4: '迅雷' };
+  const panMap: Record<number, string> = { 0: '夸克', 1: '阿里', 2: '百度', 3: 'UC', 4: '迅雷' };
   let panTabs = lines
     .filter((l) => panMap[l.pantype] !== undefined)
     .map((l) => ({ type: l.pantype, name: panMap[l.pantype] }));
@@ -153,7 +153,7 @@ app.get('/d/:id', async (c) => {
   const id = String(c.req.param('id')).replace(/\.html$/i, '');
   const item = await getSourceDetail(c.env, Number(id));
   if (!item) return c.html('Not Found', 404);
-  return c.html(await renderDetail(conf, item));
+  return c.html(await renderDetail(c.env, conf, item));
 });
 
 app.get('/sitemap.xml', async (c) => {

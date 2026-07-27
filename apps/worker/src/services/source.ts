@@ -151,3 +151,54 @@ export async function findDuplicate(env: Env, title: string, isType: number) {
     .bind(title, isType)
     .first<{ source_id: number }>();
 }
+
+/** 侧栏热榜：对齐原版 hotList（KV ranking + 分类图） */
+export async function getHotList(env: Env, limit = 5) {
+  const cats = await env.DB.prepare(
+    'SELECT source_category_id, name, image, is_sys FROM source_category WHERE status = 0 AND is_sys = 1 ORDER BY sort DESC'
+  ).all<any>();
+  const hotList: { name: string; image: string; list: any[] }[] = [];
+  for (const cat of cats.results || []) {
+    let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
+    if (!list?.length) {
+      const local = await env.DB.prepare(
+        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+      )
+        .bind(cat.source_category_id, limit)
+        .all<any>();
+      list = local.results || [];
+    }
+    hotList.push({
+      name: cat.name,
+      image: cat.image || '',
+      list: (list || []).slice(0, limit),
+    });
+  }
+  return hotList;
+}
+
+/** 相关资源：标题分词 LIKE 加权（简化 VicWord） */
+export async function getSameList(env: Env, detail: { id: number; title: string }, limit = 10) {
+  const cleaned = String(detail.title || '').replace(/[（(][^）)]*[）)]/g, '');
+  const tokens = segment(cleaned).filter((t) => t.length > 1).slice(0, 8);
+  if (!tokens.length) {
+    const rows = await env.DB.prepare(
+      `SELECT source_id, title FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_id<>? ORDER BY source_id DESC LIMIT ?`
+    )
+      .bind(detail.id, limit)
+      .all<any>();
+    return rows.results || [];
+  }
+  const weight = tokens.map(() => `(CASE WHEN title LIKE ? OR description LIKE ? THEN 1 ELSE 0 END)`).join('+');
+  const params: any[] = [];
+  for (const t of tokens) params.push(`%${t}%`, `%${t}%`);
+  params.push(detail.id, limit);
+  const rows = await env.DB.prepare(
+    `SELECT source_id, title, (${weight}) AS w FROM source
+     WHERE status=1 AND is_delete=0 AND is_time=0 AND source_id<>?
+     ORDER BY w DESC, source_id DESC LIMIT ?`
+  )
+    .bind(...params)
+    .all<any>();
+  return rows.results || [];
+}
