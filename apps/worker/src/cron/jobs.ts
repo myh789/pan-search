@@ -4,15 +4,16 @@ import { nowSec, httpJson } from '../utils';
 import { processTransferJob } from '../queue/transfer';
 import { getConf } from '../services/conf';
 
-/** Every 10 minutes: cleanup temp sources older than 30m */
+/** Cleanup temp sources older than conf.temp_source_ttl minutes (default 30) */
 export async function cronCleanupTemp(env: Env) {
-  const cutoff = nowSec() - 30 * 60;
+  const conf = await getConf(env);
+  const ttlMin = Math.max(5, Math.min(10080, Number(conf.temp_source_ttl) || 30));
+  const cutoff = nowSec() - ttlMin * 60;
   const rows = await env.DB.prepare(
     'SELECT source_id, fid, is_type FROM source WHERE is_time = 1 AND create_time < ? AND is_delete = 0'
   )
     .bind(cutoff)
     .all<any>();
-  const conf = await getConf(env);
   for (const row of rows.results || []) {
     try {
       if (row.fid) {

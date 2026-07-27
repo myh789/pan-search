@@ -240,7 +240,8 @@ ${conf.seo_statistics || ''}
   </div>
 </div>
 <div id="urlModal" class="modal-mask" onclick="if(event.target===this)hideModal('urlModal')">
-  <div class="el-dialog dialogUrlBox" style="width:min(420px,92vw);background:var(--theme-other_background);border-radius:8px;padding:0">
+  <div class="el-dialog dialogUrlBox" role="dialog" aria-modal="true">
+    <button type="button" class="dialogUrl-close" onclick="hideModal('urlModal')" aria-label="关闭">×</button>
     <div class="dialogUrl" id="urlModalBody"></div>
   </div>
 </div>
@@ -304,25 +305,30 @@ function openLink(url, title, code, is_type){
 function showUrlFun(item){
   var body=document.getElementById('urlModalBody');
   var html='';
+  window.__dlgItem=item;
   if(item.showUrl){
     if(Number(pc_type)!==1){
-      var tipTitle='手机扫码', tipDesc='打开微信APP- 点击右上角 - 选择扫一扫';
-      if(item.is_type==0){ tipTitle='夸克APP'; tipDesc='打开夸克APP- 点击搜索框中的相机 - 点击扫码'; }
-      else if(item.is_type==3){ tipTitle='UC浏览器'; tipDesc='打开UC浏览器- 点击搜索框中的相机 - 点击扫码'; }
-      html+='<div class="title">请使用 <span>'+tipTitle+'</span> 扫码获取</div>';
-      html+='<div class="tips">'+tipDesc+'</div>';
-      html+='<div class="qrcode" id="qrcode"><img alt="qr" width="120" height="120" src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data='+encodeURIComponent(item.showUrl)+'"/></div>';
+      var tipTitle='手机扫码', tipDesc='打开微信APP → 右上角 → 扫一扫';
+      if(item.is_type==0){ tipTitle='夸克APP'; tipDesc='打开夸克APP → 搜索框相机 → 扫码'; }
+      else if(item.is_type==3){ tipTitle='UC浏览器'; tipDesc='打开UC浏览器 → 搜索框相机 → 扫码'; }
+      html+='<div class="dialogUrl-hd"><div class="title">请使用 <span>'+tipTitle+'</span> 扫码</div><div class="tips">'+tipDesc+'</div></div>';
+      html+='<div class="qrcode" id="qrcode"><img alt="qr" width="140" height="140" src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data='+encodeURIComponent(item.showUrl)+'"/></div>';
     }
-    html+='<div class="nav"><div class="item"><span class="t">'+(item.title||'')+'</span></div>';
+    html+='<div class="dialogUrl-res">';
+    html+='<div class="res-name">'+(item.title||'资源')+'</div>';
     if(Number(pc_type)!==2){
-      html+='<div class="item"><span>资源地址：</span><a href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">'+item.showUrl+'</a></div>';
+      html+='<a class="res-link" href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">'+item.showUrl+'</a>';
+      html+='<div class="res-actions">';
+      html+='<a class="res-btn primary" href="'+item.showUrl+'" target="_blank" rel="noopener noreferrer">打开网盘</a>';
+      html+='<button type="button" class="res-btn" onclick="copyText((__dlgItem&&__dlgItem.title)||\\'\\',(__dlgItem&&(__dlgItem.showUrl||__dlgItem.url))||\\'\\',(__dlgItem&&__dlgItem.code)||\\'\\')">复制链接</button>';
+      html+='</div>';
     }
-    if(item.code) html+='<div class="item"><span>提取码：</span><span style="color:#FF3F3D">'+item.code+'</span></div>';
+    if(item.code) html+='<div class="res-code">提取码 <b>'+item.code+'</b></div>';
     html+='</div>';
   } else {
-    html+='<div class="title">获取失败</div><div class="tips" style="color:#FF3F3D">'+(item.message||'未知错误')+'</div>';
+    html+='<div class="dialogUrl-fail"><div class="title">获取失败</div><div class="tips">'+(item.message||'未知错误')+'</div></div>';
   }
-  html+='<div class="statement"><div class="content"><p>🔔 声明：本站链接均由程序自动收集自公开网盘，不存储、不传播任何文件，跳转链接指向网盘官网。</p><p>文件内容请自行辨别，如发现违规请向网盘平台举报。本站仅供学习交流，无任何收费行为。</p></div></div>';
+  html+='<div class="statement"><p>本站链接由程序自动收集自公开网盘，不存储、不传播任何文件。请自行辨别内容，违规请向网盘官方举报。仅供学习交流，无收费行为。</p></div>';
   body.innerHTML=html;
   showModal('urlModal');
 }
@@ -714,7 +720,7 @@ export async function renderList(
       item.showUrl=item.url; showUrlFun(item); return;
     }
     showModal('urlModal');
-    document.getElementById('urlModalBody').innerHTML='<div class="tips" style="text-align:center;padding:24px">加载中…</div>';
+    document.getElementById('urlModalBody').innerHTML='<div class="dialogUrl-loading">正在转存资源…</div>';
     try{
       var r=await fetch('/api/other/save_url',{
         method:'POST',
