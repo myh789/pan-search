@@ -276,7 +276,7 @@ a:hover {
 
 .homeBox .box {
     position: relative;
-    z-index: 1;
+    z-index: 5;
     width: min(780px, 100%);
     margin: auto;
     animation: heroIn 0.7s cubic-bezier(.22,1,.36,1) both;
@@ -338,6 +338,8 @@ a:hover {
 
 .searchBox .search {
     position: relative;
+    z-index: 6;
+    overflow: visible;
     margin: auto;
     margin-top: 30px;
     background: linear-gradient(180deg, rgba(255,255,255,.92), rgba(255,255,255,.72));
@@ -473,6 +475,10 @@ a:hover {
     border: 1px solid color-mix(in srgb, var(--theme-theme) 18%, transparent);
     box-shadow: 0 4px 14px color-mix(in srgb, var(--theme-theme) 12%, transparent);
     cursor: pointer;
+    overflow: visible;
+}
+.searchBox .search .search-type.open {
+    z-index: 40;
 }
 .searchBox .search .search-type-btn {
     display: inline-flex;
@@ -573,7 +579,7 @@ a:hover {
 
 .home {
     position: relative;
-    z-index: 1;
+    z-index: 0;
     margin-top: 64px;
     text-align: left;
     animation: homeFade 0.8s ease both;

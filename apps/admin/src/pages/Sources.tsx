@@ -72,6 +72,9 @@ export function Sources() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiProgress, setAiProgress] = useState<AiProgress | null>(null);
   const aiPauseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aiStopRef = useRef(false);
+  const aiAbortRef = useRef<AbortController | null>(null);
+  const aiPauseResolveRef = useRef<((aborted: boolean) => void) | null>(null);
 
   const clearAiPauseTimer = () => {
     if (aiPauseTimer.current) {
@@ -80,7 +83,20 @@ export function Sources() {
     }
   };
 
-  useEffect(() => () => clearAiPauseTimer(), []);
+  const stopAiFill = () => {
+    aiStopRef.current = true;
+    aiAbortRef.current?.abort();
+    clearAiPauseTimer();
+    if (aiPauseResolveRef.current) {
+      aiPauseResolveRef.current(true);
+      aiPauseResolveRef.current = null;
+    }
+  };
+
+  useEffect(() => () => {
+    clearAiPauseTimer();
+    aiAbortRef.current?.abort();
+  }, []);
 
   const catName = (id?: number) => cats.find((c) => c.source_category_id === id)?.name || '-';
 
@@ -188,17 +204,19 @@ export function Sources() {
     }
     const batchTip =
       batches.length > 1
-        ? `共 ${ids.length} 条，将自动拆成 ${batches.length} 批（每批最多 ${batchSize} 条），批与批之间暂停 1 分钟`
+        ? `共 ${ids.length} 条，将自动拆成 ${batches.length} 批（每批最多 ${batchSize} 条）。实际调用 AI 后下一批才暂停 1 分钟，整批跳过则立即继续`
         : `将对 ${ids.length} 条资源智能填充关键词与介绍（已有内容不覆盖）`;
     if (!confirm(`${batchTip}，是否继续？`)) return;
 
     setAiLoading(true);
+    aiStopRef.current = false;
     let filled = 0;
     let skipped = 0;
     let failed = 0;
     let done = 0;
+    let prevBatchFilled = 0;
+    let stopped = false;
     const failMsgs: string[] = [];
-    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
     const patchProgress = (partial: Partial<AiProgress>) => {
       setAiProgress((prev) =>
@@ -233,7 +251,13 @@ export function Sources() {
 
     try {
       for (let bi = 0; bi < batches.length; bi++) {
-        if (bi > 0) {
+        if (aiStopRef.current) {
+          stopped = true;
+          break;
+        }
+
+        // 上一批实际调用过 AI 才限速等待；整批跳过则立刻下一批
+        if (bi > 0 && prevBatchFilled > 0) {
           let left = Math.ceil(batchPauseMs / 1000);
           patchProgress({
             phase: 'pausing',
@@ -245,17 +269,34 @@ export function Sources() {
             failed,
           });
           clearAiPauseTimer();
-          await new Promise<void>((resolve) => {
+          const pauseAborted = await new Promise<boolean>((resolve) => {
+            aiPauseResolveRef.current = resolve;
             aiPauseTimer.current = setInterval(() => {
+              if (aiStopRef.current) {
+                clearAiPauseTimer();
+                aiPauseResolveRef.current = null;
+                resolve(true);
+                return;
+              }
               left -= 1;
               if (left <= 0) {
                 clearAiPauseTimer();
-                resolve();
+                aiPauseResolveRef.current = null;
+                resolve(false);
               } else {
                 patchProgress({ pauseLeft: left, phase: 'pausing' });
               }
             }, 1000);
           });
+          aiPauseResolveRef.current = null;          if (pauseAborted || aiStopRef.current) {
+            stopped = true;
+            break;
+          }
+        }
+
+        if (aiStopRef.current) {
+          stopped = true;
+          break;
         }
 
         const chunk = batches[bi];
@@ -269,17 +310,45 @@ export function Sources() {
           failed,
         });
 
-        const j = await api.postForm('/admin/source/aiFill', { ids: chunk.join(',') });
+        const ac = new AbortController();
+        aiAbortRef.current = ac;
+        let j: any;
+        try {
+          j = await api.postForm('/admin/source/aiFill', { ids: chunk.join(',') }, { signal: ac.signal });
+        } catch (e: any) {
+          if (aiStopRef.current || e?.name === 'AbortError') {
+            stopped = true;
+            break;
+          }
+          failed += chunk.length;
+          done += chunk.length;
+          failMsgs.push(`第 ${bi + 1} 批：${e?.message || '请求失败'}`);
+          prevBatchFilled = 0;
+          patchProgress({ done, filled, skipped, failed });
+          continue;
+        } finally {
+          aiAbortRef.current = null;
+        }
+
+        if (aiStopRef.current) {
+          stopped = true;
+          break;
+        }
+
         if (j.code !== 200) {
           failed += chunk.length;
           done += chunk.length;
           if (j.message) failMsgs.push(`第 ${bi + 1} 批：${j.message}`);
+          prevBatchFilled = 0;
           patchProgress({ done, filled, skipped, failed });
           continue;
         }
         const d = j.data || {};
-        filled += Number(d.filled || 0);
-        skipped += Number(d.skipped || 0);
+        const batchFilled = Number(d.filled || 0);
+        const batchSkipped = Number(d.skipped || 0);
+        filled += batchFilled;
+        skipped += batchSkipped;
+        prevBatchFilled = batchFilled;
         const results = Array.isArray(d.results) ? d.results : [];
         for (const r of results) {
           if (r && r.ok === false) {
@@ -292,8 +361,9 @@ export function Sources() {
       }
 
       const summary = [
+        stopped ? '已停止' : '全部完成',
         `填充 ${filled}，跳过 ${skipped}，失败 ${failed}`,
-        batches.length > 1 ? `共 ${batches.length} 批` : '',
+        `已处理 ${done}/${ids.length}`,
         failMsgs.length ? failMsgs.join('；') : '',
       ]
         .filter(Boolean)
@@ -301,7 +371,7 @@ export function Sources() {
 
       patchProgress({
         phase: 'done',
-        done: ids.length,
+        done,
         filled,
         skipped,
         failed,
@@ -331,6 +401,7 @@ export function Sources() {
       });
     } finally {
       clearAiPauseTimer();
+      aiAbortRef.current = null;
       setAiLoading(false);
     }
   };
@@ -467,9 +538,9 @@ export function Sources() {
                 关闭
               </button>
             ) : (
-              <span className="ai-progress-phase">
-                {aiProgress.phase === 'pausing' ? '批间等待' : '进行中'}
-              </span>
+              <button type="button" className="ai-progress-stop" onClick={stopAiFill}>
+                停止
+              </button>
             )}
           </div>
           <div className="ai-progress-bar">
@@ -487,7 +558,7 @@ export function Sources() {
             已填 {aiProgress.filled} · 跳过 {aiProgress.skipped} · 失败 {aiProgress.failed}
           </div>
           {aiProgress.phase === 'pausing' && (
-            <div className="ai-progress-wait">下一批倒计时 {aiProgress.pauseLeft}s</div>
+            <div className="ai-progress-wait">下一批倒计时 {aiProgress.pauseLeft}s（可点停止）</div>
           )}
           {aiProgress.phase === 'running' && (
             <div className="ai-progress-wait">正在请求第 {aiProgress.batch} 批…</div>

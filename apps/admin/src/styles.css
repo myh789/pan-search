@@ -568,6 +568,19 @@ tr:hover td { background: #f5f7fa; }
 .ai-progress-hd .link:hover {
   color: #409eff;
 }
+.ai-progress-stop {
+  border: 1px solid #f56c6c;
+  background: #fff;
+  color: #f56c6c;
+  cursor: pointer;
+  padding: 2px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  line-height: 1.6;
+}
+.ai-progress-stop:hover {
+  background: #fef0f0;
+}
 .ai-progress-bar {
   height: 8px;
   border-radius: 999px;

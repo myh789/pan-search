@@ -43,8 +43,14 @@ async function req(path: string, options: RequestInit & { form?: Record<string, 
 }
 
 export const api = {
-  get: (path: string) => req(path),
-  postForm: (path: string, form: Record<string, any>) => req(path, { method: 'POST', form }),
-  postJson: (path: string, data: unknown) =>
-    req(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }),
+  get: (path: string, init?: RequestInit) => req(path, init),
+  postForm: (path: string, form: Record<string, any>, init?: RequestInit) =>
+    req(path, { method: 'POST', form, ...init }),
+  postJson: (path: string, data: unknown, init?: RequestInit) =>
+    req(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      ...init,
+    }),
 };
