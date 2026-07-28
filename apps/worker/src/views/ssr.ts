@@ -276,8 +276,8 @@ function searchBtn(kw){
   if(!kw){toast('请输入你要搜索的内容~');return}
   var music=false;
   if(typeof musicMode!=='undefined' && musicMode) music=true;
-  var homeActive=document.querySelector('#homeSearchMode button.active');
-  if(homeActive && homeActive.getAttribute('data-music')==='1') music=true;
+  var homeType=document.getElementById('homeSearchType');
+  if(homeType && homeType.value==='1') music=true;
   var tabM=document.getElementById('tabMusic');
   if(tabM && tabM.classList.contains('active')) music=true;
   var target='/s/'+encodeURIComponent(kw)+'.html'+(music?'?music=1':'');
@@ -469,9 +469,12 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       <div class="search">
         ${
           conf.is_quan === '1'
-            ? `<div class="search-mode" id="homeSearchMode" role="tablist" aria-label="搜索类型">
-                <button type="button" class="active" data-music="0" onclick="setHomeMusic(0)">全部</button>
-                <button type="button" data-music="1" onclick="setHomeMusic(1)">音乐</button>
+            ? `<div class="search-type">
+                <select id="homeSearchType" aria-label="搜索类型">
+                  <option value="0">资源</option>
+                  <option value="1">音乐</option>
+                </select>
+                <i class="iconfont icon-xiala" aria-hidden="true"></i>
               </div>`
             : ''
         }
@@ -484,13 +487,6 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   const extraScript = `
   document.getElementById('kwHome')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
-  window.setHomeMusic=function(v){
-    var box=document.getElementById('homeSearchMode');
-    if(!box) return;
-    box.querySelectorAll('button').forEach(function(b){
-      b.classList.toggle('active', Number(b.getAttribute('data-music'))===Number(v));
-    });
-  };
   (function(){
     var m=${mLimit};
     if(!/Mobile/i.test(navigator.userAgent)) return;

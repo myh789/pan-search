@@ -263,39 +263,45 @@ a:hover {
     color: var(--theme-theme);
 }
 
-/* 首页搜索框内：全部 / 音乐 */
-.searchBox .search .search-mode {
+/* 首页搜索框左侧：资源/音乐下拉 */
+.searchBox .search .search-type {
+    position: relative;
+    flex-shrink: 0;
     display: flex;
     align-items: center;
-    flex-shrink: 0;
-    margin-left: 8px;
-    padding: 4px;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.04);
-    gap: 2px;
+    height: 100%;
+    min-width: 88px;
+    margin-left: 6px;
+    padding: 0 8px 0 14px;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    box-sizing: border-box;
 }
-.searchBox .search .search-mode button {
+.searchBox .search .search-type select {
     appearance: none;
+    -webkit-appearance: none;
     border: none;
+    outline: none;
     background: transparent;
-    color: var(--theme-color, #666);
-    font-size: 13px;
+    color: var(--theme-color, #333);
+    font-size: 15px;
+    font-weight: 500;
     line-height: 1;
-    padding: 8px 14px;
-    border-radius: 999px;
+    padding: 0 18px 0 0;
+    height: 100%;
+    width: 100%;
     cursor: pointer;
-    transition: background 0.2s, color 0.2s;
 }
-.searchBox .search .search-mode button:hover {
-    color: var(--theme-theme);
+.searchBox .search .search-type .iconfont {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: #999;
+    pointer-events: none;
 }
-.searchBox .search .search-mode button.active {
-    background: var(--theme-theme);
-    color: var(--theme-other_background, #fff);
-    font-weight: 600;
-}
-.searchBox .search .search-mode + input {
-    padding-left: 14px;
+.searchBox .search .search-type + input {
+    padding-left: 16px;
 }
 
 .footerBox {
