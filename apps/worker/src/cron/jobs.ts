@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import { createPan } from '../pan';
-import { nowSec, httpJson } from '../utils';
+import { nowSec } from '../utils';
 import { processTransferJob } from '../queue/transfer';
 import { getConf } from '../services/conf';
 
@@ -36,12 +36,6 @@ export async function cronCleanupTemp(env: Env) {
   }
 }
 
-/** Every 12 hours: ranking refresh */
-export async function cronRanking(env: Env) {
-  const { refreshAllRankings } = await import('../services/ranking');
-  await refreshAllRankings(env);
-}
-
 /** Daily 03:00 UTC: transfer_all */
 export async function cronDailyTransfer(env: Env) {
   const lock = await env.KV.get('lock:daily_transfer');
@@ -52,16 +46,11 @@ export async function cronDailyTransfer(env: Env) {
 
 export async function handleScheduled(event: ScheduledEvent, env: Env) {
   const cron = (event as any).cron as string | undefined;
-  // Prefer Cloudflare cron expression when present
-  if (cron === '0 */12 * * *') {
-    await cronRanking(env);
-    return;
-  }
   if (cron === '0 3 * * *') {
     await cronDailyTransfer(env);
     return;
   }
-  // default */10 cleanup + rebuild search index when dirty
+  // 默认整点：清理临时资源 + 脏了才重建搜索索引（已去掉 12h 热榜定时）
   await cronCleanupTemp(env);
   const { cronRebuildSearchIndex } = await import('../services/search-index');
   await cronRebuildSearchIndex(env);

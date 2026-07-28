@@ -35,7 +35,7 @@ max_batch_size = 5
 max_retries = 3
 
 [triggers]
-crons = ["*/10 * * * *", "0 */12 * * *", "0 3 * * *"]
+crons = ["0 * * * *", "0 3 * * *"]
 
 [vars]
 APP_NAME = "PanSearch"

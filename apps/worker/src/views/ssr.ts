@@ -29,6 +29,11 @@ export function panFullName(t: number) {
   return map[t] ?? '夸克网盘';
 }
 
+/** 详情页地址展示：去掉协议前缀，便于一行显示 */
+function displayUrl(url: string) {
+  return String(url || '').replace(/^https?:\/\//i, '');
+}
+
 function highlightTitle(title: string, keyword: string) {
   const raw = String(title || '');
   const kw = String(keyword || '').trim();
@@ -280,7 +285,7 @@ function searchBtn(kw){
   var music=false;
   if(typeof musicMode!=='undefined' && musicMode) music=true;
   var homeType=document.getElementById('homeSearchType');
-  if(homeType && homeType.value==='1') music=true;
+  if(homeType && (homeType.value==='1' || homeType.getAttribute('value')==='1')) music=true;
   var tabM=document.getElementById('tabMusic');
   if(tabM && tabM.classList.contains('active')) music=true;
   var target='/s/'+encodeURIComponent(kw)+'.html'+(music?'?music=1':'');
@@ -389,12 +394,13 @@ ${opts.extraScript || ''}
 }
 
 export async function renderHome(env: Env, conf: Record<string, string>) {
-  const { getCachedCategories, getCachedHomeLatest } = await import('../services/cache');
+  const { getCachedCategories, getCachedHomeLatest, getCachedHomeCatLists } = await import('../services/cache');
   const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
   const limit = Math.min(10, Math.max(1, Number(conf.ranking_num) || 10));
   const latestLimit = 15;
   const mLimit = Math.min(limit, Math.max(1, Number(conf.ranking_m_num) || 6));
   const withImg = conf.ranking_type === '1';
+  const catLists = await getCachedHomeCatLists(env, limit);
 
   const renderRankItems = (list: any[], max = limit) =>
     (list || [])
@@ -432,36 +438,19 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   }
 
   const blocks: string[] = [];
-  const rankList: { name: string; is_sys: number }[] = [];
   for (const cat of cats) {
-    const isSys = Number(cat.is_sys) === 1 && Number(cat.is_type || 0) === 0;
-    rankList.push({ name: cat.name, is_sys: isSys ? 1 : Number(cat.is_sys) });
-
-    let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
-    if (!list?.length && !isSys) {
-      const local = await env.DB.prepare(
-        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-      )
-        .bind(cat.source_category_id, limit)
-        .all<any>();
-      list = local.results || [];
-    }
-
-    // 原版：系统热榜无缓存时仍展示分区骨架，前端拉榜填充
-    const items = renderRankItems(list || []);
-    const loading = !items
-      ? isSys
-        ? `<div class="rank-loading" aria-hidden="true"><i></i><i></i><i></i><i></i></div>`
-        : `<div class="rank-empty">暂无资源</div>`
-      : '';
+    const list = catLists[String(cat.source_category_id)] || [];
+    const items = renderRankItems(list);
     blocks.push(
-      `<div class="block" data-channel="${esc(cat.name)}" data-sys="${isSys ? 1 : 0}" style="--i:${
+      `<div class="block" data-channel="${esc(cat.name)}" data-sys="0" style="--i:${
         (newBlock ? 1 : 0) + blocks.length
       }">
         <div class="nav">${
           cat.image ? `<img src="${esc(cat.image)}" alt="${esc(cat.name)}"/>` : ''
         }${esc(cat.name)}</div>
-        <div class="content"><div class="list">${items || loading}</div></div>
+        <div class="content"><div class="list">${
+          items || `<div class="rank-empty">暂无资源</div>`
+        }</div></div>
       </div>`
     );
   }
@@ -487,12 +476,16 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       <div class="search">
         ${
           conf.is_quan === '1'
-            ? `<div class="search-type" title="选择搜索类型">
-                <select id="homeSearchType" aria-label="搜索类型">
-                  <option value="0">资源</option>
-                  <option value="1">音乐</option>
-                </select>
-                <i class="search-type-caret iconfont icon-xiala" aria-hidden="true"></i>
+            ? `<div class="search-type" id="homeSearchTypeWrap" data-value="0">
+                <button type="button" class="search-type-btn" id="homeSearchTypeBtn" aria-haspopup="listbox" aria-expanded="false">
+                  <span id="homeSearchTypeLabel">资源</span>
+                  <i class="search-type-caret iconfont icon-xiala" aria-hidden="true"></i>
+                </button>
+                <div class="search-type-menu" id="homeSearchTypeMenu" hidden role="listbox">
+                  <button type="button" class="search-type-option active" role="option" data-value="0">资源</button>
+                  <button type="button" class="search-type-option" role="option" data-value="1">音乐</button>
+                </div>
+                <input type="hidden" id="homeSearchType" value="0"/>
               </div>`
             : ''
         }
@@ -505,48 +498,55 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   const extraScript = `
   document.getElementById('kwHome')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
-  var mLimit=${mLimit}, rankLimit=${limit}, withImg=${withImg ? 'true' : 'false'};
-  function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-  function renderRankList(list){
-    var n=/Mobile/i.test(navigator.userAgent) ? mLimit : rankLimit;
-    list=(list||[]).slice(0, n);
-    return list.map(function(x,i){
-      var href=x.id ? '/d/'+x.id+'.html' : '/s/'+encodeURIComponent(x.title)+'.html';
-      if(withImg){
-        var inner=x.src
-          ? '<img src="'+escHtml(x.src)+'" alt="'+escHtml(x.title)+'"/><span>Loading...</span>'
-          : '<span class="titleLoading">'+escHtml(String(x.title||'').slice(0,20))+(String(x.title||'').length>20?'...':'')+'</span>';
-        return '<a href="'+href+'" target="_blank" class="item" data-rank-i="'+i+'"><div class="img">'+inner+'</div><p>'+escHtml(x.title)+'</p></a>';
-      }
-      return '<a href="'+href+'" target="_blank" class="item" data-rank-i="'+i+'"><p><span>'+(i+1)+'</span>'+escHtml(x.title)+'</p></a>';
-    }).join('');
-  }
+  (function(){
+    var wrap=document.getElementById('homeSearchTypeWrap');
+    var btn=document.getElementById('homeSearchTypeBtn');
+    var menu=document.getElementById('homeSearchTypeMenu');
+    var hidden=document.getElementById('homeSearchType');
+    var label=document.getElementById('homeSearchTypeLabel');
+    if(!wrap||!btn||!menu||!hidden) return;
+    function closeMenu(){
+      menu.hidden=true;
+      wrap.classList.remove('open');
+      btn.setAttribute('aria-expanded','false');
+    }
+    function openMenu(){
+      menu.hidden=false;
+      wrap.classList.add('open');
+      btn.setAttribute('aria-expanded','true');
+    }
+    btn.addEventListener('click',function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      if(menu.hidden) openMenu(); else closeMenu();
+    });
+    menu.querySelectorAll('.search-type-option').forEach(function(opt){
+      opt.addEventListener('click',function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        var v=opt.getAttribute('data-value')||'0';
+        hidden.value=v;
+        wrap.setAttribute('data-value',v);
+        label.textContent=v==='1'?'音乐':'资源';
+        menu.querySelectorAll('.search-type-option').forEach(function(o){ o.classList.toggle('active', o===opt); });
+        closeMenu();
+      });
+    });
+    document.addEventListener('click',function(e){
+      if(!wrap.contains(e.target)) closeMenu();
+    });
+  })();
+  var mLimit=${mLimit};
   (function(){
     if(!/Mobile/i.test(navigator.userAgent)) return;
     document.querySelectorAll('.home .content .list').forEach(function(list){
       var cap = list.closest('.block-new') ? 15 : mLimit;
       Array.prototype.forEach.call(list.children, function(el,i){
-        if(el.classList && el.classList.contains('rank-loading')) return;
         if(el.classList && el.classList.contains('rank-empty')) return;
         if(i>=cap) el.style.display='none';
       });
     });
   })();
-  var rankList=${JSON.stringify(rankList)};
-  rankList.forEach(function(item){
-    if(item.is_sys!=1) return;
-    var box=document.querySelector('.home .block[data-channel="'+String(item.name).replace(/"/g,'')+'"] .list');
-    if(!box) return;
-    var need=!!box.querySelector('.rank-loading') || box.children.length===0;
-    fetch('/api/tool/ranking?channel='+encodeURIComponent(item.name)+(/Mobile/i.test(navigator.userAgent)?'&is_m=1':''))
-      .then(function(r){return r.json()})
-      .then(function(res){
-        var data=(res&&res.data)||[];
-        if(!data.length){ if(need) box.innerHTML='<div class="rank-empty">暂无榜单</div>'; return; }
-        box.innerHTML=renderRankList(data);
-      })
-      .catch(function(){ if(need) box.innerHTML='<div class="rank-empty">加载失败</div>'; });
-  });
   `;
 
   return layout(conf, {
@@ -952,17 +952,14 @@ export async function renderDetail(env: Env, conf: Record<string, string>, item:
         ${item.vod_pic ? `<div class="pic"><img src="${esc(item.vod_pic)}" alt="${esc(item.title)}"/></div>` : ''}
         <div class="title">${esc(item.title)}</div>
         <div class="cat"><div class="l">资源分类</div><div class="r">${esc(item.category_name || '其它')}</div></div>
-        <div class="cat"><div class="l">资源描述</div><div class="r">${esc(item.vod_content || item.description || '-')}</div></div>
+        <div class="cat"><div class="l">资源描述</div><div class="r desc">${esc(item.vod_content || item.description || '-')}</div></div>
         <div class="cat"><div class="l">更新时间</div><div class="r">${esc(item.times || '')}</div></div>
-        <div class="cat"><div class="l">资源类型</div><div class="r">
-          <img src="${panIconSrc(t)}" class="icon" alt="网盘图标"/>
-          <span>${esc(panFullName(t))}</span>
-        </div></div>
+        <div class="cat"><div class="l">资源类型</div><div class="r"><span>${esc(panFullName(t))}</span></div></div>
         ${
           pc !== 2
-            ? `<div class="cat" id="urlRow"><div class="l">资源地址</div><div class="r"><a href="javascript:;" onclick="linkBtn()" class="btn">${esc(
+            ? `<div class="cat" id="urlRow"><div class="l">资源地址</div><div class="r"><a href="javascript:;" onclick="linkBtn()" class="btn url-text" title="${esc(
                 item.url
-              )}</a></div></div>`
+              )}">${esc(displayUrl(item.url))}</a></div></div>`
             : ''
         }
         ${

@@ -33,15 +33,10 @@ apiRoutes.get('/search/getNew', async (c) => {
 });
 
 apiRoutes.get('/search/getHot', async (c) => {
-  const conf = await getConf(c.env);
-  const cats = await c.env.DB.prepare('SELECT name FROM source_category WHERE status = 0 ORDER BY sort DESC').all<{
-    name: string;
-  }>();
-  const hot: any[] = [];
-  for (const cat of cats.results || []) {
-    const cached = await c.env.KV.get(`ranking:${cat.name}`, 'json');
-    hot.push({ name: cat.name, list: cached || [] });
-  }
+  const conf = c.get('conf') || (await getConf(c.env));
+  const { getHotList } = await import('../services/source');
+  const limit = Math.max(1, Number(conf.ranking_num) || 10);
+  const hot = await getHotList(c.env, limit);
   return c.json(jok('获取成功', { conf: { ranking_num: conf.ranking_num }, hot }));
 });
 
@@ -84,16 +79,8 @@ apiRoutes.post('/tool/feedback', async (c) => {
 });
 
 apiRoutes.get('/tool/ranking', async (c) => {
-  const channel = (c.req.query('channel') || '').trim();
-  const is_m = Number(c.req.query('is_m') || 0) === 1;
-  if (!channel) {
-    const { refreshAllRankings } = await import('../services/ranking');
-    await refreshAllRankings(c.env);
-    return c.json(jok('已刷新'));
-  }
-  const { fetchChannelRanking } = await import('../services/ranking');
-  const data = await fetchChannelRanking(c.env, channel, { mobile: is_m });
-  return c.json(jok('获取成功', data));
+  // 热榜补榜已停用：不再读/写 ranking:*，避免无意义 KV 消耗
+  return c.json(jok('获取成功', []));
 });
 
 apiRoutes.get('/other/web_search', async (c) => {

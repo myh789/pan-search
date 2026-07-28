@@ -88,38 +88,33 @@
         display: inline-flex;
         align-items: center;
         position: relative;
-        overflow: hidden;
+        overflow: visible;
         background: color-mix(in srgb, var(--theme-theme) 8%, transparent);
         border: 1px solid color-mix(in srgb, var(--theme-theme) 14%, transparent);
         box-shadow: none;
+        z-index: 30;
     }
-    .searchBox .search .search-type select {
-        position: absolute;
-        inset: 0;
-        z-index: 2;
-        width: 100%;
-        height: 100%;
+    .searchBox .search .search-type-btn {
+        padding: 0 2.4vw 0 3vw;
         font-size: 3.2vw;
-        font-weight: 700;
-        line-height: 8vw;
-        padding: 0 5vw 0 3vw;
-        color: var(--theme-theme) !important;
+        color: var(--theme-theme);
     }
     .searchBox .search .search-type-caret {
-        position: absolute;
-        right: 1.6vw;
-        top: 0;
-        z-index: 1;
-        display: inline-flex !important;
-        width: 4vw;
-        height: 8vw;
-        align-items: center;
-        justify-content: center;
-        border: none !important;
-        color: var(--theme-theme) !important;
+        width: 3.6vw;
+        height: 3.6vw;
         font-size: 2.8vw !important;
-        opacity: .85;
-        pointer-events: none;
+        color: var(--theme-theme) !important;
+    }
+    .searchBox .search .search-type-menu {
+        top: calc(100% + 2vw);
+        min-width: 28vw;
+        padding: 1.5vw;
+        border-radius: 3vw;
+    }
+    .searchBox .search .search-type-option {
+        padding: 2.6vw 3vw;
+        font-size: 3.4vw;
+        border-radius: 2.2vw;
     }
     .searchBox .search .search-type + input {
         padding-left: 2.5vw;
@@ -357,6 +352,16 @@
     .details .cat {
         display: flex;
         font-size: 4.2vw;
+    }
+    .details .cat .r.desc {
+        font-size: 3.4vw;
+        line-height: 1.55;
+        opacity: .82;
+    }
+    .details .cat .r a.url-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .details .pic {
         width: 30vw;

@@ -1,6 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import { api } from '../api/client';
+
+type AiProgress = {
+  total: number;
+  done: number;
+  batch: number;
+  batches: number;
+  filled: number;
+  skipped: number;
+  failed: number;
+  phase: 'running' | 'pausing' | 'done';
+  pauseLeft: number;
+  summary?: string;
+};
 
 type Cat = { source_category_id: number; name: string };
 type Row = {
@@ -57,6 +70,17 @@ export function Sources() {
   const [batchCat, setBatchCat] = useState(0);
   const [batchUrls, setBatchUrls] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiProgress, setAiProgress] = useState<AiProgress | null>(null);
+  const aiPauseTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearAiPauseTimer = () => {
+    if (aiPauseTimer.current) {
+      clearInterval(aiPauseTimer.current);
+      aiPauseTimer.current = null;
+    }
+  };
+
+  useEffect(() => () => clearAiPauseTimer(), []);
 
   const catName = (id?: number) => cats.find((c) => c.source_category_id === id)?.name || '-';
 
@@ -155,6 +179,7 @@ export function Sources() {
 
   const aiFill = async (ids: number[]) => {
     if (!ids.length) return alert('请先选择资源');
+    if (aiLoading) return;
     const batchSize = 20;
     const batchPauseMs = 60_000;
     const batches: number[][] = [];
@@ -171,18 +196,85 @@ export function Sources() {
     let filled = 0;
     let skipped = 0;
     let failed = 0;
+    let done = 0;
     const failMsgs: string[] = [];
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+    const patchProgress = (partial: Partial<AiProgress>) => {
+      setAiProgress((prev) =>
+        prev
+          ? { ...prev, ...partial }
+          : {
+              total: ids.length,
+              done: 0,
+              batch: 1,
+              batches: batches.length,
+              filled: 0,
+              skipped: 0,
+              failed: 0,
+              phase: 'running',
+              pauseLeft: 0,
+              ...partial,
+            }
+      );
+    };
+
+    setAiProgress({
+      total: ids.length,
+      done: 0,
+      batch: 1,
+      batches: batches.length,
+      filled: 0,
+      skipped: 0,
+      failed: 0,
+      phase: 'running',
+      pauseLeft: 0,
+    });
+
     try {
       for (let bi = 0; bi < batches.length; bi++) {
         if (bi > 0) {
-          await sleep(batchPauseMs);
+          let left = Math.ceil(batchPauseMs / 1000);
+          patchProgress({
+            phase: 'pausing',
+            batch: bi + 1,
+            pauseLeft: left,
+            done,
+            filled,
+            skipped,
+            failed,
+          });
+          clearAiPauseTimer();
+          await new Promise<void>((resolve) => {
+            aiPauseTimer.current = setInterval(() => {
+              left -= 1;
+              if (left <= 0) {
+                clearAiPauseTimer();
+                resolve();
+              } else {
+                patchProgress({ pauseLeft: left, phase: 'pausing' });
+              }
+            }, 1000);
+          });
         }
+
         const chunk = batches[bi];
+        patchProgress({
+          phase: 'running',
+          batch: bi + 1,
+          pauseLeft: 0,
+          done,
+          filled,
+          skipped,
+          failed,
+        });
+
         const j = await api.postForm('/admin/source/aiFill', { ids: chunk.join(',') });
         if (j.code !== 200) {
           failed += chunk.length;
+          done += chunk.length;
           if (j.message) failMsgs.push(`第 ${bi + 1} 批：${j.message}`);
+          patchProgress({ done, filled, skipped, failed });
           continue;
         }
         const d = j.data || {};
@@ -195,14 +287,27 @@ export function Sources() {
             if (r.message && failMsgs.length < 5) failMsgs.push(`#${r.source_id} ${r.message}`);
           }
         }
+        done += chunk.length;
+        patchProgress({ done, filled, skipped, failed, batch: bi + 1 });
       }
 
-      const lines = [
-        `全部完成：填充 ${filled}，跳过 ${skipped}，失败 ${failed}`,
-        batches.length > 1 ? `共处理 ${batches.length} 批` : '',
-        failMsgs.length ? `失败示例：${failMsgs.join('；')}` : '',
-      ].filter(Boolean);
-      alert(lines.join('\n'));
+      const summary = [
+        `填充 ${filled}，跳过 ${skipped}，失败 ${failed}`,
+        batches.length > 1 ? `共 ${batches.length} 批` : '',
+        failMsgs.length ? failMsgs.join('；') : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      patchProgress({
+        phase: 'done',
+        done: ids.length,
+        filled,
+        skipped,
+        failed,
+        pauseLeft: 0,
+        summary,
+      });
 
       if (dlgEdit && ids.includes(form.source_id)) {
         const d = await api.postForm('/admin/source/detail', { source_id: form.source_id }).catch(() => null);
@@ -215,7 +320,17 @@ export function Sources() {
         }
       }
       load();
+    } catch (e: any) {
+      patchProgress({
+        phase: 'done',
+        summary: e?.message || '填充中断',
+        filled,
+        skipped,
+        failed,
+        done,
+      });
     } finally {
+      clearAiPauseTimer();
       setAiLoading(false);
     }
   };
@@ -343,6 +458,45 @@ export function Sources() {
 
   return (
     <div>
+      {aiProgress && (
+        <div className={`ai-progress-float ${aiProgress.phase === 'done' ? 'is-done' : ''}`} role="status">
+          <div className="ai-progress-hd">
+            <strong>AI 智能填充</strong>
+            {aiProgress.phase === 'done' ? (
+              <button type="button" className="link" onClick={() => setAiProgress(null)}>
+                关闭
+              </button>
+            ) : (
+              <span className="ai-progress-phase">
+                {aiProgress.phase === 'pausing' ? '批间等待' : '进行中'}
+              </span>
+            )}
+          </div>
+          <div className="ai-progress-bar">
+            <i style={{ width: `${Math.min(100, Math.round((aiProgress.done / Math.max(1, aiProgress.total)) * 100))}%` }} />
+          </div>
+          <div className="ai-progress-meta">
+            <span>
+              {aiProgress.done}/{aiProgress.total} 条
+            </span>
+            <span>
+              第 {Math.min(aiProgress.batch, aiProgress.batches)}/{aiProgress.batches} 批
+            </span>
+          </div>
+          <div className="ai-progress-stats">
+            已填 {aiProgress.filled} · 跳过 {aiProgress.skipped} · 失败 {aiProgress.failed}
+          </div>
+          {aiProgress.phase === 'pausing' && (
+            <div className="ai-progress-wait">下一批倒计时 {aiProgress.pauseLeft}s</div>
+          )}
+          {aiProgress.phase === 'running' && (
+            <div className="ai-progress-wait">正在请求第 {aiProgress.batch} 批…</div>
+          )}
+          {aiProgress.phase === 'done' && aiProgress.summary && (
+            <div className="ai-progress-summary">{aiProgress.summary}</div>
+          )}
+        </div>
+      )}
       <div className="toolbar">
         <button type="button" className="plain sm" onClick={openAdd}>
           + 添加资源

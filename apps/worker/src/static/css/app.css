@@ -456,10 +456,10 @@ a:hover {
     color: #fff;
 }
 
-/* 资源/音乐：整块可点，select 铺满芯片 */
+/* 资源/音乐：自定义下拉，避免手机唤起系统选择器 */
 .searchBox .search .search-type {
     position: relative;
-    z-index: 1;
+    z-index: 20;
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
@@ -473,44 +473,28 @@ a:hover {
     border: 1px solid color-mix(in srgb, var(--theme-theme) 18%, transparent);
     box-shadow: 0 4px 14px color-mix(in srgb, var(--theme-theme) 12%, transparent);
     cursor: pointer;
-    overflow: hidden;
 }
-.searchBox .search .search-type select {
-    appearance: none !important;
-    -webkit-appearance: none !important;
-    -moz-appearance: none !important;
-    position: absolute;
-    inset: 0;
-    z-index: 2;
+.searchBox .search .search-type-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
     width: 100%;
     height: 100%;
-    margin: 0;
-    border: none;
-    outline: none;
-    background: transparent !important;
-    background-image: none !important;
-    color: var(--theme-theme) !important;
+    padding: 0 10px 0 14px;
+    border: 0;
+    background: transparent;
+    color: var(--theme-theme);
     font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.01em;
-    line-height: 40px;
-    padding: 0 28px 0 14px;
     cursor: pointer;
-}
-.searchBox .search .search-type select option {
-    color: #222;
-    font-weight: 600;
-}
-.searchBox .search .search-type select::-ms-expand {
-    display: none;
+    font-family: inherit;
 }
 .searchBox .search .search-type-caret {
-    position: absolute;
-    right: 8px;
-    top: 0;
-    z-index: 1;
-    width: 18px;
-    height: 40px;
+    flex: none;
+    width: 16px;
+    height: 16px;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
@@ -520,7 +504,47 @@ a:hover {
     font-size: 12px !important;
     line-height: 1;
     opacity: .9;
-    pointer-events: none;
+    transition: transform .18s ease;
+}
+.searchBox .search .search-type.open .search-type-caret {
+    transform: rotate(180deg);
+}
+.searchBox .search .search-type-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 8px);
+    min-width: 112px;
+    padding: 6px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid color-mix(in srgb, var(--theme-theme) 16%, transparent);
+    box-shadow: 0 16px 40px rgba(15, 23, 42, .14);
+    z-index: 30;
+}
+.searchBox .search .search-type-menu[hidden] {
+    display: none !important;
+}
+.searchBox .search .search-type-option {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: transparent;
+    color: var(--ink, #0b1220);
+    font-size: 14px;
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+}
+.searchBox .search .search-type-option:hover,
+.searchBox .search .search-type-option.active {
+    color: var(--theme-theme);
+    background: color-mix(in srgb, var(--theme-theme) 10%, transparent);
 }
 .searchBox .search .search-type + input {
     padding-left: 12px;
@@ -1175,9 +1199,18 @@ a:hover {
     width: 0;
 }
 
-.details .cat .r a {
-    color: var(--theme-theme);
-    word-wrap: break-word;
+.details .cat .r.desc {
+    font-size: 13px;
+    line-height: 1.55;
+    opacity: .82;
+    word-break: break-word;
+}
+
+.details .cat .r a.url-text {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
     word-break: normal;
 }
 

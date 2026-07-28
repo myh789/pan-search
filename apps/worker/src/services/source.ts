@@ -184,28 +184,18 @@ export async function findDuplicate(env: Env, title: string, isType: number) {
     .first<{ source_id: number }>();
 }
 
-/** 侧栏热榜：对齐原版 hotList（KV ranking + 分类图） */
+/** 侧栏热门：本站分类最新资源（不再读 ranking:* KV） */
 export async function getHotList(env: Env, limit = 5) {
-  const { getCachedCategories } = await import('./cache');
-  const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0 && Number(c.is_sys) === 1);
-  const hotList: { name: string; image: string; list: any[] }[] = [];
-  for (const cat of cats) {
-    let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
-    if (!list?.length) {
-      const local = await env.DB.prepare(
-        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-      )
-        .bind(cat.source_category_id, limit)
-        .all<any>();
-      list = local.results || [];
-    }
-    hotList.push({
+  const { getCachedCategories, getCachedHomeCatLists } = await import('./cache');
+  const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
+  const catLists = await getCachedHomeCatLists(env, Math.max(limit, 5));
+  return cats
+    .map((cat: any) => ({
       name: cat.name,
       image: cat.image || '',
-      list: (list || []).slice(0, limit),
-    });
-  }
-  return hotList;
+      list: (catLists[String(cat.source_category_id)] || []).slice(0, limit),
+    }))
+    .filter((x) => x.list.length > 0);
 }
 
 /** 相关资源：标题分词 LIKE 加权（简化 VicWord） */
