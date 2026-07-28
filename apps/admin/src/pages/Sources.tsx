@@ -155,24 +155,61 @@ export function Sources() {
 
   const aiFill = async (ids: number[]) => {
     if (!ids.length) return alert('请先选择资源');
-    if (!confirm(`将对 ${ids.length} 条资源智能填充关键词与介绍（已有内容不覆盖），是否继续？`)) return;
+    const batchSize = 20;
+    const batches: number[][] = [];
+    for (let i = 0; i < ids.length; i += batchSize) {
+      batches.push(ids.slice(i, i + batchSize));
+    }
+    const batchTip =
+      batches.length > 1
+        ? `共 ${ids.length} 条，将自动拆成 ${batches.length} 批（每批最多 ${batchSize} 条）依次填充`
+        : `将对 ${ids.length} 条资源智能填充关键词与介绍（已有内容不覆盖）`;
+    if (!confirm(`${batchTip}，是否继续？`)) return;
+
     setAiLoading(true);
+    let filled = 0;
+    let skipped = 0;
+    let failed = 0;
+    const failMsgs: string[] = [];
     try {
-      const j = await api.postForm('/admin/source/aiFill', { ids: ids.join(',') });
-      alert(j.message);
-      if (j.code === 200) {
-        if (dlgEdit && ids.includes(form.source_id)) {
-          const d = await api.postForm('/admin/source/detail', { source_id: form.source_id }).catch(() => null);
-          if (d?.code === 200 && d.data) {
-            setForm((f) => ({
-              ...f,
-              description: d.data.description || '',
-              vod_content: d.data.vod_content || '',
-            }));
+      for (let bi = 0; bi < batches.length; bi++) {
+        const chunk = batches[bi];
+        const j = await api.postForm('/admin/source/aiFill', { ids: chunk.join(',') });
+        if (j.code !== 200) {
+          failed += chunk.length;
+          if (j.message) failMsgs.push(`第 ${bi + 1} 批：${j.message}`);
+          continue;
+        }
+        const d = j.data || {};
+        filled += Number(d.filled || 0);
+        skipped += Number(d.skipped || 0);
+        const results = Array.isArray(d.results) ? d.results : [];
+        for (const r of results) {
+          if (r && r.ok === false) {
+            failed++;
+            if (r.message && failMsgs.length < 5) failMsgs.push(`#${r.source_id} ${r.message}`);
           }
         }
-        load();
       }
+
+      const lines = [
+        `全部完成：填充 ${filled}，跳过 ${skipped}，失败 ${failed}`,
+        batches.length > 1 ? `共处理 ${batches.length} 批` : '',
+        failMsgs.length ? `失败示例：${failMsgs.join('；')}` : '',
+      ].filter(Boolean);
+      alert(lines.join('\n'));
+
+      if (dlgEdit && ids.includes(form.source_id)) {
+        const d = await api.postForm('/admin/source/detail', { source_id: form.source_id }).catch(() => null);
+        if (d?.code === 200 && d.data) {
+          setForm((f) => ({
+            ...f,
+            description: d.data.description || '',
+            vod_content: d.data.vod_content || '',
+          }));
+        }
+      }
+      load();
     } finally {
       setAiLoading(false);
     }
