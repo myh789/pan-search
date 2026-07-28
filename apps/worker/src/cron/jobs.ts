@@ -38,54 +38,8 @@ export async function cronCleanupTemp(env: Env) {
 
 /** Every 12 hours: ranking refresh */
 export async function cronRanking(env: Env) {
-  const conf = await getConf(env);
-  const cats = await env.DB.prepare(
-    'SELECT source_category_id, name, is_sys, is_type FROM source_category WHERE status = 0'
-  ).all<any>();
-  const limit = Number(conf.ranking_num) || 10;
-  for (const cat of cats.results || []) {
-    if (cat.is_sys === 1 && cat.is_type === 0) {
-      // try quark trending
-      try {
-        const res = await httpJson('https://biz.quark.cn/api/trending/ranking/getYingshiRanking', {
-          method: 'GET',
-          query: { rank_type: 1, page: 1, page_size: limit },
-        });
-        const list = (res.data?.data?.list || res.data?.list || []).slice(0, limit).map((x: any, i: number) => ({
-          title: x.title || x.name,
-          id: 0,
-          times: '',
-          rank: i + 1,
-        }));
-        await env.KV.put(`ranking:${cat.name}`, JSON.stringify(list), { expirationTtl: 43200 });
-      } catch {
-        // fallback local
-        const local = await env.DB.prepare(
-          `SELECT title, source_id as id, create_time as time FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-        )
-          .bind(cat.source_category_id, limit)
-          .all<any>();
-        const list = (local.results || []).map((x, i) => ({
-          title: x.title,
-          id: x.id,
-          times: '',
-          rank: i + 1,
-        }));
-        await env.KV.put(`ranking:${cat.name}`, JSON.stringify(list), { expirationTtl: 43200 });
-      }
-    } else {
-      const local = await env.DB.prepare(
-        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-      )
-        .bind(cat.source_category_id, limit)
-        .all<any>();
-      await env.KV.put(
-        `ranking:${cat.name}`,
-        JSON.stringify((local.results || []).map((x, i) => ({ ...x, rank: i + 1, times: '' }))),
-        { expirationTtl: 43200 }
-      );
-    }
-  }
+  const { refreshAllRankings } = await import('../services/ranking');
+  await refreshAllRankings(env);
 }
 
 /** Daily 03:00 UTC: transfer_all */

@@ -146,7 +146,7 @@ export function layout(
   const linkTtlMin = Math.max(5, Math.min(10080, Number(conf.temp_source_ttl) || 30));
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,user-scalable=no,maximum-scale=1.0"/>
@@ -156,6 +156,9 @@ export function layout(
 <meta name="keywords" content="${esc(opts.keywords || conf.app_keywords)}"/>
 <meta name="description" content="${esc(opts.description || conf.app_description)}"/>
 ${conf.app_icon ? `<link rel="icon" href="${esc(conf.app_icon)}"/>` : ''}
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@450;500;600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet"/>
 <style>${APP_CSS}\n${M_CSS}</style>
 <style>
 :root {
@@ -392,41 +395,8 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   const mLimit = Math.min(limit, Math.max(1, Number(conf.ranking_m_num) || 6));
   const withImg = conf.ranking_type === '1';
 
-  let newBlock = '';
-  if (conf.home_new === '0') {
-    const news = await getCachedHomeLatest(env, limit);
-    const items = (news || [])
-      .slice(0, limit)
-      .map((x: any, i: number) => {
-        if (withImg) {
-          return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><div class="img"><span class="titleLoading">${esc(
-            String(x.title).slice(0, 20)
-          )}${String(x.title).length > 20 ? '...' : ''}</span></div><p>${esc(x.title)}</p></a>`;
-        }
-        return `<a href="/d/${x.id}.html" target="_blank" class="item" data-rank-i="${i}"><p><span>${i + 1}</span>${esc(
-          x.title
-        )}</p></a>`;
-      })
-      .join('');
-    newBlock = `<div class="block"><div class="nav">${
-      conf.home_new_img ? `<img src="${esc(conf.home_new_img)}" alt="最新更新"/>` : ''
-    }最新更新</div><div class="content"><div class="list">${items}</div></div></div>`;
-  }
-
-  const blocks: string[] = [];
-  const rankList: { name: string; is_sys: number }[] = [];
-  for (const cat of cats) {
-    rankList.push({ name: cat.name, is_sys: Number(cat.is_sys) });
-    let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
-    if (!list?.length) {
-      const local = await env.DB.prepare(
-        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-      )
-        .bind(cat.source_category_id, limit)
-        .all<any>();
-      list = local.results || [];
-    }
-    const items = (list || [])
+  const renderRankItems = (list: any[]) =>
+    (list || [])
       .slice(0, limit)
       .map((x: any, i: number) => {
         const href = x.id ? `/d/${x.id}.html` : `/s/${encodeURIComponent(x.title)}.html`;
@@ -445,10 +415,53 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
         )}</p></a>`;
       })
       .join('');
+
+  let newBlock = '';
+  if (conf.home_new === '0') {
+    const news = await getCachedHomeLatest(env, limit);
+    const items = renderRankItems(news || []);
+    newBlock = `<div class="block block-new" data-channel="__new__" data-sys="0" style="--i:0">
+      <div class="nav">${
+        conf.home_new_img ? `<img src="${esc(conf.home_new_img)}" alt="最新更新"/>` : ''
+      }最新更新</div>
+      <div class="content"><div class="list">${
+        items || `<div class="rank-empty">暂无入库资源，导入后将显示在这里</div>`
+      }</div></div>
+    </div>`;
+  }
+
+  const blocks: string[] = [];
+  const rankList: { name: string; is_sys: number }[] = [];
+  for (const cat of cats) {
+    const isSys = Number(cat.is_sys) === 1 && Number(cat.is_type || 0) === 0;
+    rankList.push({ name: cat.name, is_sys: isSys ? 1 : Number(cat.is_sys) });
+
+    let list: any[] = (await env.KV.get(`ranking:${cat.name}`, 'json')) as any;
+    if (!list?.length && !isSys) {
+      const local = await env.DB.prepare(
+        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+      )
+        .bind(cat.source_category_id, limit)
+        .all<any>();
+      list = local.results || [];
+    }
+
+    // 原版：系统热榜无缓存时仍展示分区骨架，前端拉榜填充
+    const items = renderRankItems(list || []);
+    const loading = !items
+      ? isSys
+        ? `<div class="rank-loading" aria-hidden="true"><i></i><i></i><i></i><i></i></div>`
+        : `<div class="rank-empty">暂无资源</div>`
+      : '';
     blocks.push(
-      `<div class="block"><div class="nav">${
-        cat.image ? `<img src="${esc(cat.image)}" alt="${esc(cat.name)}"/>` : ''
-      }${esc(cat.name)}</div><div class="content"><div class="list">${items}</div></div></div>`
+      `<div class="block" data-channel="${esc(cat.name)}" data-sys="${isSys ? 1 : 0}" style="--i:${
+        (newBlock ? 1 : 0) + blocks.length
+      }">
+        <div class="nav">${
+          cat.image ? `<img src="${esc(cat.image)}" alt="${esc(cat.name)}"/>` : ''
+        }${esc(cat.name)}</div>
+        <div class="content"><div class="list">${items || loading}</div></div>
+      </div>`
     );
   }
 
@@ -463,17 +476,24 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   const body = `
   <div class="homeBox searchBox">
+    <div class="aurora" aria-hidden="true">
+      <span class="orb orb-a"></span><span class="orb orb-b"></span><span class="orb orb-c"></span>
+      <span class="grid"></span>
+    </div>
     <div class="box">
       <div class="logoBox">${logoHtml}${titleHtml}</div>
       ${conf.app_subname ? `<div class="subTitle">${esc(conf.app_subname)}</div>` : ''}
       <div class="search">
         ${
           conf.is_quan === '1'
-            ? `<div class="search-type">
-                <select id="homeSearchType" aria-label="搜索类型">
-                  <option value="0">资源</option>
-                  <option value="1">音乐</option>
-                </select>
+            ? `<div class="search-type" title="选择搜索类型">
+                <div class="search-type-field">
+                  <select id="homeSearchType" aria-label="搜索类型">
+                    <option value="0">资源</option>
+                    <option value="1">音乐</option>
+                  </select>
+                </div>
+                <i class="search-type-caret iconfont icon-xiala" aria-hidden="true"></i>
               </div>`
             : ''
         }
@@ -486,17 +506,45 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   const extraScript = `
   document.getElementById('kwHome')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
+  var mLimit=${mLimit}, rankLimit=${limit}, withImg=${withImg ? 'true' : 'false'};
+  function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+  function renderRankList(list){
+    var n=/Mobile/i.test(navigator.userAgent) ? mLimit : rankLimit;
+    list=(list||[]).slice(0, n);
+    return list.map(function(x,i){
+      var href=x.id ? '/d/'+x.id+'.html' : '/s/'+encodeURIComponent(x.title)+'.html';
+      if(withImg){
+        var inner=x.src
+          ? '<img src="'+escHtml(x.src)+'" alt="'+escHtml(x.title)+'"/><span>Loading...</span>'
+          : '<span class="titleLoading">'+escHtml(String(x.title||'').slice(0,20))+(String(x.title||'').length>20?'...':'')+'</span>';
+        return '<a href="'+href+'" target="_blank" class="item" data-rank-i="'+i+'"><div class="img">'+inner+'</div><p>'+escHtml(x.title)+'</p></a>';
+      }
+      return '<a href="'+href+'" target="_blank" class="item" data-rank-i="'+i+'"><p><span>'+(i+1)+'</span>'+escHtml(x.title)+'</p></a>';
+    }).join('');
+  }
   (function(){
-    var m=${mLimit};
     if(!/Mobile/i.test(navigator.userAgent)) return;
     document.querySelectorAll('.home .content .list').forEach(function(list){
-      Array.prototype.forEach.call(list.children, function(el,i){ if(i>=m) el.style.display='none'; });
+      Array.prototype.forEach.call(list.children, function(el,i){
+        if(el.classList && el.classList.contains('rank-loading')) return;
+        if(i>=mLimit) el.style.display='none';
+      });
     });
   })();
   var rankList=${JSON.stringify(rankList)};
   rankList.forEach(function(item){
     if(item.is_sys!=1) return;
-    fetch('/api/tool/ranking?channel='+encodeURIComponent(item.name)).catch(function(){});
+    var box=document.querySelector('.home .block[data-channel="'+String(item.name).replace(/"/g,'')+'"] .list');
+    if(!box) return;
+    var need=!!box.querySelector('.rank-loading') || box.children.length===0;
+    fetch('/api/tool/ranking?channel='+encodeURIComponent(item.name)+(/Mobile/i.test(navigator.userAgent)?'&is_m=1':''))
+      .then(function(r){return r.json()})
+      .then(function(res){
+        var data=(res&&res.data)||[];
+        if(!data.length){ if(need) box.innerHTML='<div class="rank-empty">暂无榜单</div>'; return; }
+        box.innerHTML=renderRankList(data);
+      })
+      .catch(function(){ if(need) box.innerHTML='<div class="rank-empty">加载失败</div>'; });
   });
   `;
 

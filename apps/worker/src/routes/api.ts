@@ -84,9 +84,16 @@ apiRoutes.post('/tool/feedback', async (c) => {
 });
 
 apiRoutes.get('/tool/ranking', async (c) => {
-  const { cronRanking } = await import('../cron/jobs');
-  await cronRanking(c.env);
-  return c.json(jok('已刷新'));
+  const channel = (c.req.query('channel') || '').trim();
+  const is_m = Number(c.req.query('is_m') || 0) === 1;
+  if (!channel) {
+    const { refreshAllRankings } = await import('../services/ranking');
+    await refreshAllRankings(c.env);
+    return c.json(jok('已刷新'));
+  }
+  const { fetchChannelRanking } = await import('../services/ranking');
+  const data = await fetchChannelRanking(c.env, channel, { mobile: is_m });
+  return c.json(jok('获取成功', data));
 });
 
 apiRoutes.get('/other/web_search', async (c) => {

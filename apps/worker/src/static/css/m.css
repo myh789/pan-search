@@ -56,50 +56,106 @@
     .homeBox .logoBox .logo {
         height: 13.2vw;
     }
+    .homeBox .aurora {
+        inset: -8vw -10vw auto;
+        height: 70vw;
+    }
+    .homeBox .aurora .orb {
+        filter: blur(10vw);
+    }
+    .homeBox .aurora .orb-a {
+        width: 48vw;
+        height: 48vw;
+    }
+    .homeBox .aurora .orb-b {
+        width: 40vw;
+        height: 40vw;
+    }
+    .homeBox .aurora .orb-c {
+        width: 32vw;
+        height: 32vw;
+    }
     .homeBox .logoBox .title {
-        margin-left: 3.4vw;
-        font-size: 5.6vw;
+        font-size: 11vw;
     }
     
-    .searchBox .search {
-        margin-top: 5vw;
-        height: 12.5vw;
-        border-radius: 12.5vw;
-    }
-    .searchBox .search input {
-        border-radius: 12.5vw;
-        font-size: 4.2vw;
-        padding-left: 5vw;
-    }
-    .searchBox .search .btn {
-        width: 15vw;
-        height: 12.5vw;
-    }
-    .searchBox .search .btn .iconfont{
-        font-size: 5.8vw;
-    }
     .searchBox .search .search-type {
         min-width: 18vw;
-        margin-left: 1vw;
-        padding: 0 1vw 0 3.5vw;
+        height: 8vw;
+        margin-left: 1.6vw;
+        border-radius: 999px;
+        padding: 0 1vw 0 0;
+        display: flex;
+        align-items: center;
+        background: color-mix(in srgb, var(--theme-theme) 8%, transparent);
+        border: 1px solid color-mix(in srgb, var(--theme-theme) 14%, transparent);
+        box-shadow: none;
     }
     .searchBox .search .search-type select {
-        font-size: 3.4vw;
-        padding-right: 5vw;
-        background-position: right 1.5vw center;
-        background-size: 2.4vw 1.8vw;
+        font-size: 3.2vw;
+        font-weight: 700;
+        line-height: 8vw;
+        height: 8vw;
+        padding: 0 1vw 0 3vw;
+        width: calc(100% + 5vw);
+        color: var(--theme-theme) !important;
+    }
+    .searchBox .search .search-type-caret {
+        display: inline-flex !important;
+        width: 4.5vw;
+        height: 8vw;
+        align-items: center;
+        justify-content: center;
+        border: none !important;
+        color: var(--theme-theme) !important;
+        font-size: 2.8vw !important;
+        opacity: .85;
     }
     .searchBox .search .search-type + input {
-        padding-left: 3vw;
-        font-size: 3.8vw;
+        padding-left: 2.5vw;
+        font-size: 3.6vw;
+    }
+    .searchBox .search {
+        margin-top: 5vw;
+        height: 12vw;
+        border-radius: 999px;
+    }
+    .searchBox .search input {
+        font-size: 3.6vw;
+        padding-left: 2vw;
+    }
+    .searchBox .search .btn {
+        width: 9.5vw;
+        height: 9.5vw;
+        margin-right: 1.2vw;
+        border-radius: 999px;
+    }
+    .searchBox .search .btn .iconfont {
+        font-size: 4.4vw;
+        color: #fff;
+    }
+    .home .cat-chips {
+        gap: 2vw;
+        margin-top: 6vw;
+        padding: 0 2vw;
+    }
+    .home .cat-chips a {
+        padding: 2vw 3.2vw;
+        font-size: 3.2vw;
     }
     .home {
-        flex-wrap: wrap;
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        justify-content: flex-start;
+        width: 100%;
         margin-top: 10vw;
+        box-sizing: border-box;
     }
     .home .nav{
         font-size: 4.2vw;
-        padding: 0 3vw 2vw;
+        padding: 3.2vw 3.6vw 2vw;
     }
     .home .nav img {
         width: 6vw;
@@ -131,23 +187,45 @@
         transform: translateY(0);
     }
     
-    .home.homeNO .block {
-        margin: 0;
-        margin-bottom: 5vw;
+    .home.homeNO {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: stretch;
         width: 100%;
-        flex: auto;
     }
 
+    .home.homeNO .block,
+    .home.homeNO .block.block-new,
     .home.homeNO.homeSingle .block {
-        width: 100%;
-        margin: 0 0 5vw;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 0 0 auto !important;
+        margin: 0 0 4vw !important;
+        box-sizing: border-box;
+    }
+
+    .home.homeNO .block.block-new .content .list {
+        display: block;
+        grid-template-columns: none;
+        padding: 0 3.2vw 3.2vw;
     }
     
     .home.homeNO .content .list {
-        padding: 0 3vw 3vw;
+        padding: 0 3.2vw 3.2vw;
+        width: 100%;
+        box-sizing: border-box;
     }
     .home.homeNO .content .list .item{
-        max-width: 100%;
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0;
+        box-sizing: border-box;
+    }
+    .home.homeNO .content .list .item p {
+        font-size: 3.6vw;
+        padding: 2.2vw 1.5vw;
     }
     
     
@@ -219,13 +297,20 @@
     }
 
     .listBox .left .list {
-        padding: 0;
+        padding: 0 1vw;
     }
     .listBox .left .list .item {
-        padding: 5vw 0;
+        padding: 4.2vw 3.5vw;
+        margin: 0 0 3vw;
+        border-radius: 3vw;
+        border: 1px solid rgba(20, 30, 60, .07);
+        border-left: 1vw solid var(--theme-theme);
+        background: var(--surface, #fff);
+        box-shadow: 0 1.5vw 3.5vw rgba(20, 30, 60, .06);
     }
     .listBox .left .list .item .title {
         font-size: 4.6vw;
+        font-weight: 800;
         padding-bottom: 1.2vw;
     }
     .listBox .left .list .item .btns{
@@ -277,7 +362,7 @@
         z-index: 10;
         padding: 0 5vw 2vw;
         display: block;
-        background-color: var(--theme-background);
+        background-color: color-mix(in srgb, #f4f6f9 92%, transparent);
     }
     .searchList .search {
         margin-top: 3vw;
@@ -308,7 +393,7 @@
         z-index: 10;
         padding: 0 5vw 2vw;
         display: block;
-        background-color: var(--theme-background);
+        background-color: color-mix(in srgb, #f4f6f9 92%, transparent);
     }
     .searchDetail .search {
         margin-top: 3vw;
@@ -350,11 +435,13 @@
         
     
     .switch-items {
-        gap: 4.2vw;
-        padding-top: 20vw;
+        gap: 1vw;
+        margin-top: 3vw;
+        padding: 1vw;
     }
     .switch-items a {
-        font-size: 3.8vw;
+        font-size: 3.4vw;
+        padding: 1.6vw 3vw;
     }
 
     .btns2 {
