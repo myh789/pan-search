@@ -156,13 +156,14 @@ export function Sources() {
   const aiFill = async (ids: number[]) => {
     if (!ids.length) return alert('请先选择资源');
     const batchSize = 20;
+    const batchPauseMs = 60_000;
     const batches: number[][] = [];
     for (let i = 0; i < ids.length; i += batchSize) {
       batches.push(ids.slice(i, i + batchSize));
     }
     const batchTip =
       batches.length > 1
-        ? `共 ${ids.length} 条，将自动拆成 ${batches.length} 批（每批最多 ${batchSize} 条）依次填充`
+        ? `共 ${ids.length} 条，将自动拆成 ${batches.length} 批（每批最多 ${batchSize} 条），批与批之间暂停 1 分钟`
         : `将对 ${ids.length} 条资源智能填充关键词与介绍（已有内容不覆盖）`;
     if (!confirm(`${batchTip}，是否继续？`)) return;
 
@@ -171,8 +172,12 @@ export function Sources() {
     let skipped = 0;
     let failed = 0;
     const failMsgs: string[] = [];
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     try {
       for (let bi = 0; bi < batches.length; bi++) {
+        if (bi > 0) {
+          await sleep(batchPauseMs);
+        }
         const chunk = batches[bi];
         const j = await api.postForm('/admin/source/aiFill', { ids: chunk.join(',') });
         if (j.code !== 200) {
