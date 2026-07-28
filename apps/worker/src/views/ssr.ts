@@ -392,12 +392,13 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   const { getCachedCategories, getCachedHomeLatest } = await import('../services/cache');
   const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
   const limit = Math.min(10, Math.max(1, Number(conf.ranking_num) || 10));
+  const latestLimit = 15;
   const mLimit = Math.min(limit, Math.max(1, Number(conf.ranking_m_num) || 6));
   const withImg = conf.ranking_type === '1';
 
-  const renderRankItems = (list: any[]) =>
+  const renderRankItems = (list: any[], max = limit) =>
     (list || [])
-      .slice(0, limit)
+      .slice(0, max)
       .map((x: any, i: number) => {
         const href = x.id ? `/d/${x.id}.html` : `/s/${encodeURIComponent(x.title)}.html`;
         if (withImg) {
@@ -418,8 +419,8 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
 
   let newBlock = '';
   if (conf.home_new === '0') {
-    const news = await getCachedHomeLatest(env, limit);
-    const items = renderRankItems(news || []);
+    const news = await getCachedHomeLatest(env, latestLimit);
+    const items = renderRankItems(news || [], latestLimit);
     newBlock = `<div class="block block-new" data-channel="__new__" data-sys="0" style="--i:0">
       <div class="nav">${
         conf.home_new_img ? `<img src="${esc(conf.home_new_img)}" alt="最新更新"/>` : ''
@@ -487,12 +488,10 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
         ${
           conf.is_quan === '1'
             ? `<div class="search-type" title="选择搜索类型">
-                <div class="search-type-field">
-                  <select id="homeSearchType" aria-label="搜索类型">
-                    <option value="0">资源</option>
-                    <option value="1">音乐</option>
-                  </select>
-                </div>
+                <select id="homeSearchType" aria-label="搜索类型">
+                  <option value="0">资源</option>
+                  <option value="1">音乐</option>
+                </select>
                 <i class="search-type-caret iconfont icon-xiala" aria-hidden="true"></i>
               </div>`
             : ''
@@ -525,9 +524,11 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
   (function(){
     if(!/Mobile/i.test(navigator.userAgent)) return;
     document.querySelectorAll('.home .content .list').forEach(function(list){
+      var cap = list.closest('.block-new') ? 15 : mLimit;
       Array.prototype.forEach.call(list.children, function(el,i){
         if(el.classList && el.classList.contains('rank-loading')) return;
-        if(i>=mLimit) el.style.display='none';
+        if(el.classList && el.classList.contains('rank-empty')) return;
+        if(i>=cap) el.style.display='none';
       });
     });
   })();
