@@ -263,6 +263,41 @@ a:hover {
     color: var(--theme-theme);
 }
 
+/* 首页搜索框内：全部 / 音乐 */
+.searchBox .search .search-mode {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 8px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.04);
+    gap: 2px;
+}
+.searchBox .search .search-mode button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--theme-color, #666);
+    font-size: 13px;
+    line-height: 1;
+    padding: 8px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+}
+.searchBox .search .search-mode button:hover {
+    color: var(--theme-theme);
+}
+.searchBox .search .search-mode button.active {
+    background: var(--theme-theme);
+    color: var(--theme-other_background, #fff);
+    font-weight: 600;
+}
+.searchBox .search .search-mode + input {
+    padding-left: 14px;
+}
+
 .footerBox {
     padding: 30px 15px 20px;
 }
@@ -1006,64 +1041,6 @@ a:hover {
     margin: auto;
     border-radius: 4px;
     background-color: var(--theme-theme);
-}
-
-/* 音乐线路勾选（与 source-switch 同排） */
-.music-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-left: 16px;
-    padding-top: 16px;
-    cursor: pointer;
-    user-select: none;
-    color: inherit;
-    font-size: inherit;
-    white-space: nowrap;
-}
-.music-check input {
-    width: 16px;
-    height: 16px;
-    margin: 0;
-    accent-color: var(--theme-theme);
-    cursor: pointer;
-}
-.music-check span {
-    position: relative;
-    padding: 5px 0;
-    transition: color 0.3s;
-}
-.music-check.on span,
-.music-check:has(input:checked) span {
-    color: var(--theme-theme);
-    font-weight: bold;
-}
-.music-check.on span:after,
-.music-check:has(input:checked) span:after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: 20px;
-    height: 4px;
-    margin: auto;
-    border-radius: 4px;
-    background-color: var(--theme-theme);
-}
-.music-check.home-music {
-    display: flex;
-    justify-content: center;
-    margin: 10px 0 0;
-    padding-top: 0;
-    font-size: 14px;
-    color: var(--theme-font_color, #666);
-}
-.music-check.home-music span:after {
-    display: none;
-}
-.music-check.home-music:has(input:checked) span:after {
-    display: none;
 }
 
 .vtips {

@@ -275,9 +275,11 @@ function searchBtn(kw){
   kw=(kw||'').trim();
   if(!kw){toast('请输入你要搜索的内容~');return}
   var music=false;
-  var m1=document.getElementById('musicOnly');
-  var m2=document.getElementById('musicOnlyHome');
-  if((m1&&m1.checked)||(m2&&m2.checked)) music=true;
+  if(typeof musicMode!=='undefined' && musicMode) music=true;
+  var homeActive=document.querySelector('#homeSearchMode button.active');
+  if(homeActive && homeActive.getAttribute('data-music')==='1') music=true;
+  var tabM=document.getElementById('tabMusic');
+  if(tabM && tabM.classList.contains('active')) music=true;
   var target='/s/'+encodeURIComponent(kw)+'.html'+(music?'?music=1':'');
   var cur=location.href;
   if(cur.indexOf('/s/')>=0||cur.indexOf('/d/')>=0) location.href=target;
@@ -465,20 +467,30 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       <div class="logoBox">${logoHtml}${titleHtml}</div>
       ${conf.app_subname ? `<div class="subTitle">${esc(conf.app_subname)}</div>` : ''}
       <div class="search">
+        ${
+          conf.is_quan === '1'
+            ? `<div class="search-mode" id="homeSearchMode" role="tablist" aria-label="搜索类型">
+                <button type="button" class="active" data-music="0" onclick="setHomeMusic(0)">全部</button>
+                <button type="button" data-music="1" onclick="setHomeMusic(1)">音乐</button>
+              </div>`
+            : ''
+        }
         <input id="kwHome" type="text" placeholder="输入关键字进行搜索"/>
         <div class="btn" onclick="searchBtn(document.getElementById('kwHome').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
-      ${
-        conf.is_quan === '1'
-          ? `<label class="music-check home-music" for="musicOnlyHome"><input type="checkbox" id="musicOnlyHome"/><span>音乐</span></label>`
-          : ''
-      }
     </div>
     <div class="home ${homeClass}">${newBlock}${blocks.join('')}</div>
   </div>`;
 
   const extraScript = `
   document.getElementById('kwHome')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
+  window.setHomeMusic=function(v){
+    var box=document.getElementById('homeSearchMode');
+    if(!box) return;
+    box.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('active', Number(b.getAttribute('data-music'))===Number(v));
+    });
+  };
   (function(){
     var m=${mLimit};
     if(!/Mobile/i.test(navigator.userAgent)) return;
@@ -630,12 +642,8 @@ export async function renderList(
           ? `<div class="source-switch"><h3>切换搜索源：</h3><div class="switch-items">
               <a href="javascript:;" id="tabLocal" class="active" onclick="switchSource(0)">本地搜</a>
               <a href="javascript:;" id="tabWeb" onclick="switchSource(1)">全网搜</a>
-            </div>
-            <label class="music-check" for="musicOnly" title="勾选后只搜音乐线路">
-              <input type="checkbox" id="musicOnly" onchange="toggleMusic(this.checked)"/>
-              <span>音乐</span>
-            </label>
-            </div>`
+              <a href="javascript:;" id="tabMusic" onclick="switchSource(2)">音乐搜</a>
+            </div></div>`
           : `<h3>为您找到【<span>${esc(name)}</span>】相关资源<span>&nbsp;${total}&nbsp;</span>条</h3>`
       }
       <div class="box" id="localPane">${localInner}</div>
@@ -715,48 +723,29 @@ export async function renderList(
     if(type==is_type && currentSource==1 && QList.length) return;
     is_type=type;
     QLoading=false; QList=[];
-    applyPanFilterUi();
-    switchSource(1);
+    switchSource(musicMode ? 2 : 1, true);
   }
-  function toggleMusic(on){
-    musicMode=on?1:0;
-    var wrap=document.querySelector('.music-check:not(.home-music)');
-    if(wrap) wrap.classList.toggle('on', !!musicMode);
-    var kind=document.getElementById('webKind');
-    if(kind) kind.textContent=musicMode?'音乐':'资源';
-    if(musicMode){
-      is_type=firstMusicPan;
-      QLoading=false; QList=[];
-      switchSource(1);
-    } else if(currentSource===1){
-      is_type=firstPan;
-      QLoading=false; QList=[];
-      startWebSearch();
-      applyPanFilterUi();
-    }
-  }
-  function switchSource(source){
-    currentSource=source;
-    if(source===0){
-      musicMode=0;
-      var ck=document.getElementById('musicOnly');
-      if(ck) ck.checked=false;
-      var wrap=document.querySelector('.music-check:not(.home-music)');
-      if(wrap) wrap.classList.remove('on');
-      var kind=document.getElementById('webKind');
-      if(kind) kind.textContent='资源';
+  function switchSource(source, keepType){
+    // 0=本地 1=全网资源 2=音乐线路
+    musicMode = source===2 ? 1 : 0;
+    currentSource = source===0 ? 0 : 1;
+    if(!keepType){
+      if(source===1) is_type = firstPan;
+      if(source===2) is_type = firstMusicPan;
     }
     document.getElementById('tabLocal')?.classList.toggle('active', source===0);
     document.getElementById('tabWeb')?.classList.toggle('active', source===1);
+    document.getElementById('tabMusic')?.classList.toggle('active', source===2);
     document.getElementById('localPane').style.display=source===0?'block':'none';
-    document.getElementById('webPane').style.display=source===1?'block':'none';
+    document.getElementById('webPane').style.display=source===0?'none':'block';
     document.getElementById('selectLocal').style.display=source===0?'':'none';
-    document.getElementById('selectWeb').style.display=source===1?'':'none';
+    document.getElementById('selectWeb').style.display=source===0?'none':'';
+    var kind=document.getElementById('webKind');
+    if(kind) kind.textContent=musicMode?'音乐':'资源';
     applyPanFilterUi();
-    if(source===1){
-      if(QLoading||QList.length>0) return;
-      startWebSearch();
-    }
+    if(source===0) return;
+    QLoading=false; QList=[];
+    startWebSearch();
   }
   function startWebSearch(){
     if(currentEventSource){ try{currentEventSource.close()}catch(e){} }
@@ -875,12 +864,8 @@ export async function renderList(
     quan && !blocked
       ? `(function(){
     var wantMusic=/(?:^|[?&])music=1(?:&|$)/.test(location.search);
-    if(wantMusic){
-      var ck=document.getElementById('musicOnly');
-      if(ck){ ck.checked=true; toggleMusic(true); }
-    } else if(${items.length === 0 ? 'true' : 'false'}){
-      switchSource(1);
-    }
+    if(wantMusic) switchSource(2);
+    else if(${items.length === 0 ? 'true' : 'false'}) switchSource(1);
   })();`
       : ''
   }
