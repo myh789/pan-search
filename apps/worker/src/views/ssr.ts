@@ -474,7 +474,6 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
                   <option value="0">资源</option>
                   <option value="1">音乐</option>
                 </select>
-                <i class="iconfont icon-xiala" aria-hidden="true"></i>
               </div>`
             : ''
         }

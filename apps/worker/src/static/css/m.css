@@ -81,15 +81,13 @@
     .searchBox .search .search-type {
         min-width: 18vw;
         margin-left: 1vw;
-        padding: 0 2vw 0 3.5vw;
+        padding: 0 1vw 0 3.5vw;
     }
     .searchBox .search .search-type select {
         font-size: 3.4vw;
-        padding-right: 4vw;
-    }
-    .searchBox .search .search-type .iconfont {
-        right: 2vw;
-        font-size: 2.8vw;
+        padding-right: 5vw;
+        background-position: right 1.5vw center;
+        background-size: 2.4vw 1.8vw;
     }
     .searchBox .search .search-type + input {
         padding-left: 3vw;
