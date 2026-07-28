@@ -323,7 +323,7 @@ npm run deploy
 | 3 | **基础设置** | 找到 `api_key`，把 `change-me` 改成一长串随机字符并保存 |
 | 4 | **基础设置 → AI设置** | 填 Agnes API Key（模型默认 `agnes-2.5-flash`）；也可用终端 `npx wrangler secret put AGNES_API_KEY`（Secret 优先于后台） |
 | 5 | **账号管理** | 至少填好夸克 Cookie 和目录 fid（主推夸克） |
-| 6 | （可选）全网搜线路、`transfer_feed_url` 等 | 按需要填 |
+| 6 | （可选）**资源 → 接口配置** | 按 [QUARK-SEARCH-LINES.md](./QUARK-SEARCH-LINES.md) 手动添加夸克全网搜线路 |
 | 7 | 点 **清理缓存** | 让新配置立刻生效；同时会**重建本地搜索 KV 索引** |
 
 资源管理支持：**置顶**、**AI 智能填充**（只补空的关键词标签 / 资源介绍）。

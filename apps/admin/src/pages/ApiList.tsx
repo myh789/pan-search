@@ -24,85 +24,6 @@ const empty = {
   status: 1,
 };
 
-/** 实测可用的夸克搜索源（PanSou 系 JSON 接口 / TG） */
-const presets: Array<{ label: string; form: Partial<typeof empty> }> = [
-  {
-    label: 'PanHunt（推荐）',
-    form: {
-      name: 'PanHunt夸克',
-      type: 'api',
-      pantype: 0,
-      url: 'https://s.panhunt.com/api/search',
-      method: 'GET',
-      count: 5,
-      weight: 20,
-      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
-      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
-      headers: '{}',
-    },
-  },
-  {
-    label: 'so.252035',
-    form: {
-      name: '252035夸克',
-      type: 'api',
-      pantype: 0,
-      url: 'https://so.252035.xyz/api/search',
-      method: 'GET',
-      count: 5,
-      weight: 15,
-      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
-      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
-      headers: '{}',
-    },
-  },
-  {
-    label: 'pansou.app',
-    form: {
-      name: 'PanSou夸克',
-      type: 'api',
-      pantype: 0,
-      url: 'https://pansou.app/api/search',
-      method: 'GET',
-      count: 5,
-      weight: 12,
-      fixed_params: '{"kw":"{keyword}","cloud_types":"quark","res":"merge"}',
-      field_map: '{"list":"data.merged_by_type.quark","title":"note","url":"url"}',
-      headers: '{}',
-    },
-  },
-  {
-    label: 'TG·NewQuark',
-    form: {
-      name: 'TG-NewQuark',
-      type: 'tg',
-      pantype: 0,
-      url: 'NewQuark',
-      method: 'GET',
-      count: 5,
-      weight: 8,
-      fixed_params: '{}',
-      field_map: '{}',
-      headers: '{}',
-    },
-  },
-  {
-    label: 'KK内置',
-    form: {
-      name: 'KK夸克',
-      type: 'kk',
-      pantype: 0,
-      url: 'https://m.kkkba.com',
-      method: 'POST',
-      count: 5,
-      weight: 5,
-      fixed_params: '{}',
-      field_map: '{}',
-      headers: '{}',
-    },
-  },
-];
-
 export function ApiList() {
   const [items, setItems] = useState<any[]>([]);
   const [dlg, setDlg] = useState<'add' | 'edit' | null>(null);
@@ -129,25 +50,7 @@ export function ApiList() {
 
   const formFields = (
     <>
-      {dlg === 'add' && (
-        <div className="field">
-          <label>推荐线路</label>
-          <div className="seg" style={{ flexWrap: 'wrap', gap: 6 }}>
-            {presets.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                className="plain sm"
-                onClick={() => setForm({ ...empty, ...p.form, status: 1, id: 0 })}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-          <p className="tips">点一下自动填好「接口」参数；PanHunt / 252035 实测可用</p>
-        </div>
-      )}
-      <div className="field">
+<div className="field">
         <label>网盘类型</label>
         <div className="seg">
           {[0, 2, 3, 4].map((p) => (
@@ -185,7 +88,7 @@ export function ApiList() {
       </div>
       <div className="field">
         <label>{form.type === 'tg' ? 'TG 频道' : form.type === 'html' ? '目标网址' : '地址'}</label>
-        <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder={form.type === 'html' ? 'https://www.alipansou.com/search?k={keyword}&p=quark&s=0&t=-1' : ''} />
+        <input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder={form.type === 'html' ? 'https://www.alipansou.com/search?k={keyword}&p=quark&s=0&t=-1' : form.type === 'api' ? 'https://s.panhunt.com/api/search' : ''} />
       </div>
       <div className="field">
         <label>权重/排序</label>

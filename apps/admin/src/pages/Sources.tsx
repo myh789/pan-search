@@ -53,7 +53,7 @@ export function Sources() {
   const [form, setForm] = useState({ ...emptyForm });
   const [excelCat, setExcelCat] = useState(0);
   const [excelFile, setExcelFile] = useState<File | null>(null);
-  const [batchType, setBatchType] = useState<1 | 2 | 0>(0);
+  const [batchType, setBatchType] = useState<1 | 2 | 3 | 0>(0);
   const [batchCat, setBatchCat] = useState(0);
   const [batchUrls, setBatchUrls] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -228,7 +228,22 @@ export function Sources() {
 
   const submitBatch = async () => {
     if (!batchType) return alert('请选择导入方式');
-    if (!batchUrls.trim()) return alert('请输入资源地址');
+    if (!batchUrls.trim()) return alert(batchType === 3 ? '请输入名称+链接' : '请输入资源地址');
+    if (batchType === 3) {
+      const lines = batchUrls.split(/\n/).map((s) => s.trim()).filter(Boolean);
+      const bad = lines.filter((l) => {
+        const m = l.match(/https?:\/\/[^\s]+/);
+        if (!m) return true;
+        const title = l.slice(0, l.indexOf(m[0])).trim();
+        return !title;
+      });
+      if (bad.length === lines.length) {
+        return alert('格式不对：每行需要「资源名称」+空格/Tab+「链接」');
+      }
+      if (bad.length) {
+        if (!confirm(`有 ${bad.length} 行缺少名称或链接，将被跳过，是否继续？`)) return;
+      }
+    }
     const j = await api.postForm('/admin/source/transfer', {
       type: batchType,
       urls: batchUrls,
@@ -239,6 +254,7 @@ export function Sources() {
       setDlgBatch(false);
       setBatchUrls('');
       setBatchType(0);
+      if (batchType === 3) load();
     }
   };
 
@@ -574,6 +590,9 @@ export function Sources() {
                   <button type="button" className={batchType === 2 ? 'active' : ''} onClick={() => setBatchType(2)}>
                     转存分享导入
                   </button>
+                  <button type="button" className={batchType === 3 ? 'active' : ''} onClick={() => setBatchType(3)}>
+                    名称链接入库
+                  </button>
                 </div>
                 {batchType === 1 && (
                   <p className="tips">
@@ -587,6 +606,15 @@ export function Sources() {
                     将资源转存到自己网盘后再分享入库。
                     <br />
                     支持 <em>夸克、阿里、UC、百度、迅雷</em>（一次最多 500 条；百度/阿里完整转存仍有限）
+                  </p>
+                )}
+                {batchType === 3 && (
+                  <p className="tips">
+                    <em>不检查</em>链接有效性、不抓取标题，按你填写的名称原样入库（同步写入，不走队列）。
+                    <br />
+                    格式：<em>一行一条</em>，名称与链接用空格或 Tab 分隔，例如：
+                    <br />
+                    Elixir浏览器v1.0.20 可扩展简洁高效的浏览器[Tab]https://pan.quark.cn/s/xxxx
                   </p>
                 )}
               </div>
@@ -604,10 +632,14 @@ export function Sources() {
                     </select>
                   </div>
                   <div className="field">
-                    <label>资源链接</label>
+                    <label>{batchType === 3 ? '名称 + 链接' : '资源链接'}</label>
                     <textarea
                       rows={16}
-                      placeholder={`资源示例：\n一条资源一行\nhttps://pan.quark.cn/s/xxxxxxxx\nhttps://www.alipan.com/s/xxxxxxxxx\nhttps://drive.uc.cn/s/xxxxxxxxxxx\nhttps://pan.baidu.com/s/xxxxxx?pwd=xxxx\nhttps://pan.xunlei.com/s/xxxxxx?pwd=xxxx`}
+                      placeholder={
+                        batchType === 3
+                          ? `一行一条：资源名称 + 空格/Tab + 链接\nElixir浏览器v1.0.20 可扩展简洁高效的浏览器\thttps://pan.quark.cn/s/14d68cbbb1e6\n瘦身·瑜伽课程·全套（超全超详细）\thttps://pan.quark.cn/s/49ee194ef0f1`
+                          : `资源示例：\n一条资源一行\nhttps://pan.quark.cn/s/xxxxxxxx\nhttps://www.alipan.com/s/xxxxxxxxx\nhttps://drive.uc.cn/s/xxxxxxxxxxx\nhttps://pan.baidu.com/s/xxxxxx?pwd=xxxx\nhttps://pan.xunlei.com/s/xxxxxx?pwd=xxxx`
+                      }
                       value={batchUrls}
                       onChange={(e) => setBatchUrls(e.target.value)}
                     />

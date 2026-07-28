@@ -419,13 +419,45 @@ adminRoutes.post('/source/delete', async (c) => {
 
 adminRoutes.post('/source/transfer', async (c) => {
   const body = await c.req.parseBody();
-  const type = Number(body.type || 2); // 1=直接导入(不转存) 2=转存分享导入
+  const type = Number(body.type || 2); // 1=直接导入(校验) 2=转存分享 3=名称+链接直入(不校验)
   const urlsRaw = String(body.urls || body.url || '');
   if (!urlsRaw.trim()) return c.json(jerr('参数不能为空'));
   const parsed = parsePanLinks(urlsRaw);
   if (!parsed.length) return c.json(jerr('未解析到有效链接'));
   if (parsed.length > 500) return c.json(jerr('一次最多 500 条'));
   const categoryId = Number(body.source_category_id || 0);
+
+  // 名称+链接快速入库：不校验有效性、不拉标题，同步写库
+  if (type === 3) {
+    const rows = parsed.filter((x) => x.url && String(x.title || '').trim());
+    if (!rows.length) {
+      return c.json(jerr('未解析到「名称+链接」行。每行格式：资源名称[空格或Tab]https://...'));
+    }
+    let n = 0;
+    for (const x of rows) {
+      const title = String(x.title).trim();
+      const url = String(x.url).trim();
+      await insertSource(c.env, {
+        title,
+        url,
+        is_type: determineIsType(url),
+        code: x.code || '',
+        source_category_id: categoryId,
+      });
+      n++;
+    }
+    await onSourceMutated(c.env, n);
+    const skipped = parsed.length - rows.length;
+    return c.json(
+      jok(
+        skipped
+          ? `导入成功 ${n} 条（跳过 ${skipped} 条无名称的行）`
+          : `导入成功 ${n} 条`,
+        { count: n, skipped }
+      )
+    );
+  }
+
   const isImport = type === 1;
   const logId = await createSourceLog(c.env, isImport ? '批量转入链接' : '批量转存他人链接', parsed.length);
   const items = parsed.map((x) => ({

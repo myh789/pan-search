@@ -188,7 +188,7 @@ export async function handleHtmlLine(line: any, keyword: string): Promise<Search
   const html = res.text || '';
 
   // 猫狸盘搜 / 同类聚合：优先专用解析（列表页无直链，/s/id 即分享码）
-  if (/alipansou\.com|xiongdipan\.com|xunjiso\.com/i.test(url) || /name=["']content-title["']/i.test(html)) {
+  if (/alipansou\.com|aipanso\.com|xiongdipan\.com|xunjiso\.com/i.test(url) || /name=["']content-title["']/i.test(html)) {
     const agg = parseAggregatorList(html, pantype, keyword, limit);
     if (agg.length) return agg;
   }
