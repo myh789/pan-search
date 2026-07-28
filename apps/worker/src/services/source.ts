@@ -1,6 +1,6 @@
 import type { Env } from '../env';
 import { nowSec, segment } from '../utils';
-import { loadSearchIndex, searchIndexInMemory } from './search-index';
+import { loadSearchIndex, peekWarmSearchIndex, searchIndexInMemory } from './search-index';
 
 export type SourceListQuery = {
   title?: string;
@@ -85,26 +85,51 @@ async function getSourceListFromD1(env: Env, conf: Record<string, string>, q: So
   }
 
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-  const countRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM source ${whereSql}`)
-    .bind(...params)
-    .first<{ c: number }>();
-  const total = countRow?.c || 0;
-  let items: D1Result<any>;
-  try {
-    items = await env.DB.prepare(
-      `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
-       FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
-    )
-      .bind(...params, pageSize, offset)
-      .all<any>();
-  } catch {
-    // 未执行 0006 时无 is_top，回退排序
-    items = await env.DB.prepare(
-      `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
-       FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
-    )
-      .bind(...params, pageSize, offset)
-      .all<any>();
+  // 有关键词时 COUNT 极贵：用 LIMIT+1 估是否有更多，total 给前端分页够用即可
+  const titleSearch = !!(q.title || '').trim();
+  let total = 0;
+  let items: { results?: any[] };
+  if (titleSearch) {
+    try {
+      items = await env.DB.prepare(
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+         FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
+      )
+        .bind(...params, pageSize + 1, offset)
+        .all<any>();
+    } catch {
+      items = await env.DB.prepare(
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+         FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
+      )
+        .bind(...params, pageSize + 1, offset)
+        .all<any>();
+    }
+    const rows = items.results || [];
+    const hasMore = rows.length > pageSize;
+    if (hasMore) rows.pop();
+    total = offset + rows.length + (hasMore ? 1 : 0);
+    items = { ...items, results: rows };
+  } else {
+    const countRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM source ${whereSql}`)
+      .bind(...params)
+      .first<{ c: number }>();
+    total = countRow?.c || 0;
+    try {
+      items = await env.DB.prepare(
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+         FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
+      )
+        .bind(...params, pageSize, offset)
+        .all<any>();
+    } catch {
+      items = await env.DB.prepare(
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+         FROM source ${whereSql} ORDER BY source_id DESC LIMIT ? OFFSET ?`
+      )
+        .bind(...params, pageSize, offset)
+        .all<any>();
+    }
   }
 
   return {
@@ -127,8 +152,8 @@ export async function getSourceDetail(env: Env, id: number) {
     .bind(id)
     .first<any>();
   if (!row) return null;
-  // 浏览量：约 10% 概率回写，降低详情页 D1 写放大
-  if (Math.random() < 0.1) {
+  // 浏览量：约 2% 概率回写，详情页几乎只读
+  if (Math.random() < 0.02) {
     await env.DB.prepare('UPDATE source SET page_views = page_views + 1 WHERE source_id = ?').bind(id).run();
   }
   row.times = row.time ? new Date(row.time * 1000).toISOString().slice(0, 10) : '';
@@ -198,28 +223,70 @@ export async function getHotList(env: Env, limit = 5) {
     .filter((x) => x.list.length > 0);
 }
 
-/** 相关资源：标题分词 LIKE 加权（简化 VicWord） */
-export async function getSameList(env: Env, detail: { id: number; title: string }, limit = 10) {
+/** 相关资源：优先用 isolate 内已热的搜索索引打分；否则同分类/最新几条（禁止全表 LIKE） */
+export async function getSameList(
+  env: Env,
+  detail: { id: number; title: string; source_category_id?: number },
+  limit = 10
+) {
+  const id = detail.id;
+  const cat = Number(detail.source_category_id) || 0;
   const cleaned = String(detail.title || '').replace(/[（(][^）)]*[）)]/g, '');
-  const tokens = segment(cleaned).filter((t) => t.length > 1).slice(0, 8);
-  if (!tokens.length) {
-    const rows = await env.DB.prepare(
-      `SELECT source_id, title FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_id<>? ORDER BY source_id DESC LIMIT ?`
-    )
-      .bind(detail.id, limit)
-      .all<any>();
-    return rows.results || [];
+  const tokens = segment(cleaned)
+    .filter((t) => t.length > 1)
+    .slice(0, 6);
+
+  // 仅用已加载到 isolate 的索引，不为「相关」单独打 KV 拉全量索引
+  const warmRows = peekWarmSearchIndex();
+  if (warmRows) {
+    const scored: { source_id: number; title: string; w: number }[] = [];
+    for (const r of warmRows) {
+      if (r.i === id) continue;
+      let w = 0;
+      if (cat && r.g === cat) w += 2;
+      if (tokens.length) {
+        const tl = (r.t || '').toLowerCase();
+        const dl = (r.d || '').toLowerCase();
+        for (const tok of tokens) {
+          const n = tok.toLowerCase();
+          if (tl.includes(n)) w += 3;
+          else if (dl.includes(n)) w += 1;
+        }
+      }
+      if (w <= 0) continue;
+      scored.push({ source_id: r.i, title: r.t, w });
+    }
+    scored.sort((a, b) => b.w - a.w || b.source_id - a.source_id);
+    if (scored.length >= Math.min(3, limit)) {
+      return scored.slice(0, limit).map(({ source_id, title }) => ({ source_id, title }));
+    }
+    // 索引里相关太少：同分类补足
+    if (cat) {
+      const extra = warmRows
+        .filter((r) => r.i !== id && r.g === cat && !scored.some((s) => s.source_id === r.i))
+        .map((r) => ({ source_id: r.i, title: r.t }));
+      const merged = [...scored.map(({ source_id, title }) => ({ source_id, title })), ...extra];
+      if (merged.length) return merged.slice(0, limit);
+    }
   }
-  const weight = tokens.map(() => `(CASE WHEN title LIKE ? OR description LIKE ? THEN 1 ELSE 0 END)`).join('+');
-  const params: any[] = [];
-  for (const t of tokens) params.push(`%${t}%`, `%${t}%`);
-  params.push(detail.id, limit);
+
+  // D1 轻量回退：同分类最新，不再全表 LIKE 打分
+  if (cat) {
+    const rows = await env.DB.prepare(
+      `SELECT source_id, title FROM source
+       WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? AND source_id<>?
+       ORDER BY source_id DESC LIMIT ?`
+    )
+      .bind(cat, id, limit)
+      .all<{ source_id: number; title: string }>();
+    if (rows.results?.length) return rows.results;
+  }
   const rows = await env.DB.prepare(
-    `SELECT source_id, title, (${weight}) AS w FROM source
+    `SELECT source_id, title FROM source
      WHERE status=1 AND is_delete=0 AND is_time=0 AND source_id<>?
-     ORDER BY w DESC, source_id DESC LIMIT ?`
+     ORDER BY source_id DESC LIMIT ?`
   )
-    .bind(...params)
-    .all<any>();
+    .bind(id, limit)
+    .all<{ source_id: number; title: string }>();
   return rows.results || [];
 }

@@ -20,13 +20,14 @@ const TTL_CATEGORIES = 3600;
 const TTL_API_LIST = 1800;
 const TTL_HOME = 1800;
 const TTL_STATS = 3600;
-const MEM_TTL_MS = 60_000;
+const MEM_TTL_MS = 120_000;
 /** 分类块一次缓存的条数上限（覆盖 ranking_num） */
 const HOME_CAT_FETCH = 15;
 
 type CatMem = { at: number; list: any[] };
 type HomeMem = { at: number; list: any[] };
 type HomeCatMem = { at: number; map: Record<string, any[]> };
+type PanTabsMem = { at: number; tabs: { type: number; name: string }[] };
 
 declare global {
   // eslint-disable-next-line no-var
@@ -35,6 +36,8 @@ declare global {
   var __panHomeLatest: Record<number, HomeMem> | undefined;
   // eslint-disable-next-line no-var
   var __panHomeCatLists: HomeCatMem | undefined;
+  // eslint-disable-next-line no-var
+  var __panPanTabs: Record<number, PanTabsMem> | undefined;
 }
 
 export type AdminStats = {
@@ -156,9 +159,16 @@ export async function getCachedPanTabs(
   scene = 0
 ): Promise<{ type: number; name: string }[]> {
   const sceneN = Number(scene) === 1 ? 1 : 0;
+  const memBag = globalThis.__panPanTabs || (globalThis.__panPanTabs = {});
+  const mem = memBag[sceneN];
+  if (mem && Date.now() - mem.at < MEM_TTL_MS) return mem.tabs;
+
   const key = CACHE_KEYS.panTabs(sceneN);
   const cached = await env.KV.get(key, 'json');
-  if (Array.isArray(cached) && cached.length) return cached as { type: number; name: string }[];
+  if (Array.isArray(cached) && cached.length) {
+    memBag[sceneN] = { at: Date.now(), tabs: cached as { type: number; name: string }[] };
+    return cached as { type: number; name: string }[];
+  }
 
   const panMap: Record<number, string> = { 0: '夸克', 1: '阿里', 2: '百度', 3: 'UC', 4: '迅雷' };
   let tabs: { type: number; name: string }[] = [];
@@ -183,10 +193,12 @@ export async function getCachedPanTabs(
   }
   if (!tabs.length) tabs = [{ type: 0, name: '夸克' }];
   await env.KV.put(key, JSON.stringify(tabs), { expirationTtl: TTL_API_LIST });
+  memBag[sceneN] = { at: Date.now(), tabs };
   return tabs;
 }
 
 export async function invalidateApiListCache(env: Env) {
+  globalThis.__panPanTabs = undefined;
   await env.KV.delete(CACHE_KEYS.apiListAll);
   for (const s of [0, 1]) {
     await env.KV.delete(CACHE_KEYS.panTabs(s));
@@ -241,16 +253,42 @@ export async function getCachedHomeCatLists(env: Env, limit = HOME_CAT_FETCH): P
 
   const cats = (await getCachedCategories(env)).filter((c: any) => Number(c.status) === 0);
   const map: Record<string, any[]> = {};
-  await Promise.all(
-    cats.map(async (cat: any) => {
+  for (const cat of cats) map[String(cat.source_category_id)] = [];
+
+  if (cats.length) {
+    try {
+      // 一次查出各分类最新，避免 N 次 LIMIT 查询
+      const ids = cats.map((c: any) => Number(c.source_category_id)).filter(Boolean);
+      const placeholders = ids.map(() => '?').join(',');
       const rows = await env.DB.prepare(
-        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+        `SELECT source_category_id, title, source_id as id FROM (
+           SELECT source_category_id, title, source_id, create_time,
+             ROW_NUMBER() OVER (PARTITION BY source_category_id ORDER BY create_time DESC) AS rn
+           FROM source
+           WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id IN (${placeholders})
+         ) WHERE rn <= ?`
       )
-        .bind(cat.source_category_id, HOME_CAT_FETCH)
+        .bind(...ids, HOME_CAT_FETCH)
         .all<any>();
-      map[String(cat.source_category_id)] = rows.results || [];
-    })
-  );
+      for (const r of rows.results || []) {
+        const k = String(r.source_category_id);
+        if (!map[k]) map[k] = [];
+        map[k].push({ title: r.title, id: r.id });
+      }
+    } catch {
+      // 旧 SQLite 无窗口函数时回退并行查询
+      await Promise.all(
+        cats.map(async (cat: any) => {
+          const rows = await env.DB.prepare(
+            `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+          )
+            .bind(cat.source_category_id, HOME_CAT_FETCH)
+            .all<any>();
+          map[String(cat.source_category_id)] = rows.results || [];
+        })
+      );
+    }
+  }
   await env.KV.put(key, JSON.stringify(map), { expirationTtl: TTL_HOME });
   globalThis.__panHomeCatLists = { at: Date.now(), map };
   const out: Record<string, any[]> = {};
@@ -269,10 +307,19 @@ export async function invalidateHomeCaches(env: Env) {
 }
 
 /** 资源变更后统一失效 */
-export async function onSourceMutated(env: Env, sourceDelta = 0) {
+export async function onSourceMutated(
+  env: Env,
+  sourceDelta = 0,
+  opts?: { home?: boolean; searchIndex?: boolean }
+) {
+  // 临时资源（is_time=1）默认不进首页/搜索索引，可传 home:false, searchIndex:false
+  const touchHome = opts?.home !== false;
+  const touchIndex = opts?.searchIndex !== false;
   if (sourceDelta) await bumpAdminStats(env, { sources: sourceDelta });
   else await invalidateAdminStats(env);
-  await invalidateHomeCaches(env);
-  const { markSearchIndexDirty } = await import('./search-index');
-  await markSearchIndexDirty(env);
+  if (touchHome) await invalidateHomeCaches(env);
+  if (touchIndex) {
+    const { markSearchIndexDirty } = await import('./search-index');
+    await markSearchIndexDirty(env);
+  }
 }

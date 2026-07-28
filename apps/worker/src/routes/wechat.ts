@@ -49,7 +49,7 @@ wechatRoutes.post('/chatbot', async (c) => {
   let reply = `${name}：请发送资源关键词`;
   if (message) {
     const { getSourceList } = await import('../services/source');
-    const list = await getSourceList(c.env, conf, { title: message, page_size: 3, is_time: 1 });
+    const list = await getSourceList(c.env, conf, { title: message, page_size: 3 });
     if (list.items.length) {
       reply = list.items.map((i: any) => `${i.title}\n${i.url}`).join('\n\n');
     } else {

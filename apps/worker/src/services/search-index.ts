@@ -40,7 +40,7 @@ const SHARD_PREFIX = 'search:idx:';
 const SHARD_SIZE = 5000;
 const DESC_MAX = 240;
 /** Isolate memory cache TTL — isolate may be reused across requests */
-const MEM_TTL_MS = 60_000;
+const MEM_TTL_MS = 300_000;
 
 type MemCache = { at: number; rows: SearchIdxRow[] };
 
@@ -60,8 +60,10 @@ function truncDesc(s: string) {
 }
 
 export async function markSearchIndexDirty(env: Env) {
-  await env.KV.put(DIRTY_KEY, '1', { expirationTtl: 86400 * 7 });
   globalThis.__panSearchIdx = undefined;
+  // 已脏则不再写 KV，减少批量导入时写放大
+  if ((await env.KV.get(DIRTY_KEY)) === '1') return;
+  await env.KV.put(DIRTY_KEY, '1', { expirationTtl: 86400 * 7 });
 }
 
 export async function isSearchIndexDirty(env: Env) {
@@ -171,6 +173,15 @@ export async function rebuildSearchIndex(env: Env, force = false): Promise<numbe
   } finally {
     await env.KV.delete(LOCK_KEY);
   }
+}
+
+/** Return isolate-warm index rows without touching KV; null if cold. */
+export function peekWarmSearchIndex(): SearchIdxRow[] | null {
+  const mem = globalThis.__panSearchIdx;
+  if (mem && Date.now() - mem.at < MEM_TTL_MS && Array.isArray(mem.rows) && mem.rows.length) {
+    return mem.rows;
+  }
+  return null;
 }
 
 /** Load full index into memory (with short isolate cache). */

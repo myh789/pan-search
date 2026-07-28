@@ -926,7 +926,11 @@ export async function renderList(
 export async function renderDetail(env: Env, conf: Record<string, string>, item: any) {
   const pc = Number(conf.pc_type || 0);
   const hotList = await getHotList(env, 5);
-  const sameList = await getSameList(env, { id: item.id, title: item.title }, 10);
+  const sameList = await getSameList(
+    env,
+    { id: item.id, title: item.title, source_category_id: item.source_category_id },
+    10
+  );
   const t = Number(item.is_type || 0);
 
   const sameHtml = sameList

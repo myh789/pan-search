@@ -38,7 +38,8 @@ app.use('*', async (c, next) => {
     p.startsWith('/static/') ||
     p.startsWith('/assets/') ||
     /\.(js|css|map|ico|png|jpg|jpeg|gif|webp|svg|woff2?)$/i.test(p);
-  if (!isAsset) {
+  // 仅管理端做 bootstrap，避免每个公开页多一次 KV 读
+  if (!isAsset && (p.startsWith('/admin') || p.startsWith('/qfadmin'))) {
     await ensureBootstrapAdmin(c.env);
   }
   // 同请求内复用 conf，避免首页/搜索多次打 KV/D1；静态资源跳过
@@ -130,7 +131,7 @@ async function handleSearch(c: any, slug: string) {
     page_size: 10,
     category_id: cate,
     search_type: 1,
-    is_time: 1,
+    // 正式资源走 KV 搜索索引；勿传 is_time:1（会强制 D1 全表 LIKE）
   });
   const { getCachedCategories } = await import('./services/cache');
   const categories = (await getCachedCategories(c.env))

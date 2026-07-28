@@ -27,7 +27,8 @@ export async function processTransferJob(env: Env, job: TransferJob) {
         source_category_id: job.categoryId || 0,
       });
       const { onSourceMutated } = await import('../services/cache');
-      await onSourceMutated(env, 1);
+      const isTemp = job.expiredType === 2;
+      await onSourceMutated(env, 1, isTemp ? { home: false, searchIndex: false } : undefined);
     }
     return res;
   }

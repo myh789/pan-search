@@ -41,10 +41,17 @@ apiRoutes.get('/search/getHot', async (c) => {
 });
 
 apiRoutes.get('/search/getCategory', async (c) => {
-  const rows = await c.env.DB.prepare(
-    'SELECT source_category_id, name, image, sort, is_type FROM source_category WHERE status = 0 ORDER BY sort DESC'
-  ).all();
-  return c.json(jok('获取成功', rows.results || []));
+  const { getCachedCategories } = await import('../services/cache');
+  const rows = (await getCachedCategories(c.env))
+    .filter((x: any) => Number(x.status) === 0)
+    .map((x: any) => ({
+      source_category_id: x.source_category_id,
+      name: x.name,
+      image: x.image,
+      sort: x.sort,
+      is_type: x.is_type,
+    }));
+  return c.json(jok('获取成功', rows));
 });
 
 apiRoutes.get('/tool/getConfig', async (c) => {
@@ -133,15 +140,16 @@ apiRoutes.post('/other/save_url', async (c) => {
     is_time: 1,
   });
   const { onSourceMutated } = await import('../services/cache');
-  await onSourceMutated(c.env, 1);
+  await onSourceMutated(c.env, 1, { home: false, searchIndex: false });
   return c.json(jok('临时资源获取成功', { id, ...res.data }));
 });
 
 apiRoutes.get('/other/all_search', async (c) => {
-  const conf = await getConf(c.env);
+  const conf = c.get('conf') || (await getConf(c.env));
   const title = c.req.query('title') || '';
   if (!title) return c.json(jerr('请输入要看的内容'));
-  const local = await getSourceList(c.env, conf, { title, page_size: 5, is_time: 1 });
+  // 先走正式库索引，避免 is_time:1 触发 D1 LIKE
+  const local = await getSourceList(c.env, conf, { title, page_size: 5 });
   if (local.items.length) return c.json(jok('临时资源获取成功', local.items));
 
   const cacheKey = `search:${title}`;
@@ -171,7 +179,7 @@ apiRoutes.get('/other/all_search', async (c) => {
       }
     }
   }
-  if (out.length) await onSourceMutated(c.env, out.length);
+  if (out.length) await onSourceMutated(c.env, out.length, { home: false, searchIndex: false });
   await c.env.KV.put(cacheKey, JSON.stringify(out), { expirationTtl: 60 });
   return c.json(jok('临时资源获取成功', out));
 });
@@ -217,16 +225,17 @@ apiRoutes.post('/open/transfer', async (c) => {
   if (res.code !== 200 || !res.data) return c.json(jerr(res.message));
 
   if (isSave === 1) {
+    const isTemp = expired_type === 2;
     await insertSource(c.env, {
       title: res.data.title,
       url: res.data.share_url,
       is_type: determineIsType(res.data.share_url),
       code: res.data.code || String(body.code || ''),
       fid: typeof res.data.fid === 'string' ? res.data.fid : JSON.stringify(res.data.fid || ''),
-      is_time: expired_type === 2 ? 1 : 0,
+      is_time: isTemp ? 1 : 0,
     });
     const { onSourceMutated } = await import('../services/cache');
-    await onSourceMutated(c.env, 1);
+    await onSourceMutated(c.env, 1, isTemp ? { home: false, searchIndex: false } : undefined);
   }
   return c.json(jok(isType === 1 ? '获取成功' : '转存成功', res.data));
 });
