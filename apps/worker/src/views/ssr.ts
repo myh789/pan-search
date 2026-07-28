@@ -274,7 +274,11 @@ function hideModal(id){
 function searchBtn(kw){
   kw=(kw||'').trim();
   if(!kw){toast('请输入你要搜索的内容~');return}
-  var target='/s/'+encodeURIComponent(kw)+'.html';
+  var music=false;
+  var m1=document.getElementById('musicOnly');
+  var m2=document.getElementById('musicOnlyHome');
+  if((m1&&m1.checked)||(m2&&m2.checked)) music=true;
+  var target='/s/'+encodeURIComponent(kw)+'.html'+(music?'?music=1':'');
   var cur=location.href;
   if(cur.indexOf('/s/')>=0||cur.indexOf('/d/')>=0) location.href=target;
   else window.open(target,'_blank');
@@ -464,6 +468,11 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
         <input id="kwHome" type="text" placeholder="输入关键字进行搜索"/>
         <div class="btn" onclick="searchBtn(document.getElementById('kwHome').value)"><i class="iconfont icon-sousuo"></i></div>
       </div>
+      ${
+        conf.is_quan === '1'
+          ? `<label class="music-check home-music" for="musicOnlyHome"><input type="checkbox" id="musicOnlyHome"/><span>音乐</span></label>`
+          : ''
+      }
     </div>
     <div class="home ${homeClass}">${newBlock}${blocks.join('')}</div>
   </div>`;
@@ -501,7 +510,8 @@ export async function renderList(
   cate: string,
   list: any,
   categories: any[],
-  panTabs: { type: number; name: string }[]
+  panTabs: { type: number; name: string }[],
+  musicPanTabs: { type: number; name: string }[] = []
 ) {
   const banned = (conf.ban_keywords || '')
     .split(',')
@@ -515,6 +525,8 @@ export async function renderList(
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
   const hotList = await getHotList(env, 5);
   const firstPan = panTabs[0]?.type ?? 0;
+  const musicTabs = musicPanTabs.length ? musicPanTabs : [{ type: 0, name: '夸克' }];
+  const firstMusicPan = musicTabs[0]?.type ?? 0;
 
   const cateLabel =
     categories.find((c) => String(c.source_category_id) === String(cate))?.name || '全部';
@@ -534,6 +546,14 @@ export async function renderList(
     .map(
       (p) =>
         `<a href="javascript:;" class="pan-tab${p.type === firstPan ? ' active' : ''}" data-type="${
+          p.type
+        }" onclick="setType(${p.type})">${esc(p.name)}</a>`
+    )
+    .join('');
+  const musicPanLinks = musicTabs
+    .map(
+      (p) =>
+        `<a href="javascript:;" class="pan-tab${p.type === firstMusicPan ? ' active' : ''}" data-type="${
           p.type
         }" onclick="setType(${p.type})">${esc(p.name)}</a>`
     )
@@ -602,6 +622,7 @@ export async function renderList(
       <h3>筛选</h3>
       <div class="box" id="filterLocal">${cateLinks}</div>
       <div class="box" id="filterWeb" style="display:none">${panLinks}</div>
+      <div class="box" id="filterMusic" style="display:none">${musicPanLinks}</div>
     </div></div>
     <div class="left">
       ${
@@ -609,7 +630,12 @@ export async function renderList(
           ? `<div class="source-switch"><h3>切换搜索源：</h3><div class="switch-items">
               <a href="javascript:;" id="tabLocal" class="active" onclick="switchSource(0)">本地搜</a>
               <a href="javascript:;" id="tabWeb" onclick="switchSource(1)">全网搜</a>
-            </div></div>`
+            </div>
+            <label class="music-check" for="musicOnly" title="勾选后只搜音乐线路">
+              <input type="checkbox" id="musicOnly" onchange="toggleMusic(this.checked)"/>
+              <span>音乐</span>
+            </label>
+            </div>`
           : `<h3>为您找到【<span>${esc(name)}</span>】相关资源<span>&nbsp;${total}&nbsp;</span>条</h3>`
       }
       <div class="box" id="localPane">${localInner}</div>
@@ -617,7 +643,7 @@ export async function renderList(
         <div class="Qloading" id="webLoading" style="display:none"><div class="loader"></div></div>
         <div class="Qbtn"><div class="btn"><p>为您找到【<span>${esc(
           name
-        )}</span>】相关资源<span>&nbsp;<span id="webCount">0</span>&nbsp;</span>条</p></div></div>
+        )}</span>】相关<span id="webKind">资源</span><span>&nbsp;<span id="webCount">0</span>&nbsp;</span>条</p></div></div>
         <div class="list" id="webList"></div>
         <div id="webEmpty" style="display:none">
           ${elEmpty(
@@ -644,14 +670,16 @@ export async function renderList(
 
   const extraScript = `
   document.getElementById('kwList')?.addEventListener('keyup',function(e){ if(e.key==='Enter') searchBtn(e.target.value) });
-  var currentSource=0, is_type=${firstPan}, QList=[], QLoading=false, currentEventSource=null;
+  var currentSource=0, musicMode=0, is_type=${firstPan}, QList=[], QLoading=false, currentEventSource=null;
   var localItems=${listJson};
   var panNames=${JSON.stringify(Object.fromEntries(panTabs.map((p) => [p.type, p.name])))};
+  var musicPanNames=${JSON.stringify(Object.fromEntries(musicTabs.map((p) => [p.type, p.name])))};
+  var firstPan=${firstPan}, firstMusicPan=${firstMusicPan};
 
   function selectBtn(){
     if(!is_m) return;
     var boxes=document.querySelectorAll('.listBox .screen .fixed .box');
-    var box=currentSource===1?boxes[1]:boxes[0];
+    var box=currentSource===0?boxes[0]:(musicMode?document.getElementById('filterMusic'):document.getElementById('filterWeb'));
     if(!box) return;
     if(box.style.display==='none'||box.style.display==='') box.style.display='block';
     else box.style.display='';
@@ -668,27 +696,63 @@ export async function renderList(
     if(!item) return;
     copyText(item.title,item.url,item.code||'');
   }
+  function applyPanFilterUi(){
+    var useMusic=!!musicMode && currentSource===1;
+    document.getElementById('filterLocal').style.display=currentSource===0?'':'none';
+    document.getElementById('filterWeb').style.display=currentSource===1&&!musicMode?'':'none';
+    document.getElementById('filterMusic').style.display=currentSource===1&&musicMode?'':'none';
+    var names=useMusic?musicPanNames:panNames;
+    document.getElementById('selectWebLabel').textContent=names[is_type]||'夸克';
+    var box=useMusic?document.getElementById('filterMusic'):document.getElementById('filterWeb');
+    if(box){
+      box.querySelectorAll('.pan-tab').forEach(function(a){
+        a.classList.toggle('active', Number(a.getAttribute('data-type'))===is_type);
+      });
+    }
+  }
   function setType(type){
     selectBtn();
     if(type==is_type && currentSource==1 && QList.length) return;
     is_type=type;
     QLoading=false; QList=[];
-    document.getElementById('selectWebLabel').textContent=panNames[type]||'夸克';
-    document.querySelectorAll('.pan-tab').forEach(function(a){
-      a.classList.toggle('active', Number(a.getAttribute('data-type'))===type);
-    });
+    applyPanFilterUi();
     switchSource(1);
+  }
+  function toggleMusic(on){
+    musicMode=on?1:0;
+    var wrap=document.querySelector('.music-check:not(.home-music)');
+    if(wrap) wrap.classList.toggle('on', !!musicMode);
+    var kind=document.getElementById('webKind');
+    if(kind) kind.textContent=musicMode?'音乐':'资源';
+    if(musicMode){
+      is_type=firstMusicPan;
+      QLoading=false; QList=[];
+      switchSource(1);
+    } else if(currentSource===1){
+      is_type=firstPan;
+      QLoading=false; QList=[];
+      startWebSearch();
+      applyPanFilterUi();
+    }
   }
   function switchSource(source){
     currentSource=source;
+    if(source===0){
+      musicMode=0;
+      var ck=document.getElementById('musicOnly');
+      if(ck) ck.checked=false;
+      var wrap=document.querySelector('.music-check:not(.home-music)');
+      if(wrap) wrap.classList.remove('on');
+      var kind=document.getElementById('webKind');
+      if(kind) kind.textContent='资源';
+    }
     document.getElementById('tabLocal')?.classList.toggle('active', source===0);
     document.getElementById('tabWeb')?.classList.toggle('active', source===1);
     document.getElementById('localPane').style.display=source===0?'block':'none';
     document.getElementById('webPane').style.display=source===1?'block':'none';
-    document.getElementById('filterLocal').style.display=source===0?'':'none';
-    document.getElementById('filterWeb').style.display=source===1?'':'none';
     document.getElementById('selectLocal').style.display=source===0?'':'none';
     document.getElementById('selectWeb').style.display=source===1?'':'none';
+    applyPanFilterUi();
     if(source===1){
       if(QLoading||QList.length>0) return;
       startWebSearch();
@@ -701,7 +765,9 @@ export async function renderList(
     document.getElementById('webList').innerHTML='';
     document.getElementById('webEmpty').style.display='none';
     document.getElementById('webCount').textContent='0';
-    var params=new URLSearchParams({ title:${JSON.stringify(name)}, is_type:String(is_type) });
+    var kind=document.getElementById('webKind');
+    if(kind) kind.textContent=musicMode?'音乐':'资源';
+    var params=new URLSearchParams({ title:${JSON.stringify(name)}, is_type:String(is_type), scene:String(musicMode?1:0) });
     currentEventSource=new EventSource('/api/other/web_search?'+params.toString());
     currentEventSource.onmessage=function(event){
       if(String(event.data).indexOf('[DONE]')>=0){
@@ -806,8 +872,16 @@ export async function renderList(
     }
   }
   ${
-    quan && !blocked && items.length === 0
-      ? 'switchSource(1);'
+    quan && !blocked
+      ? `(function(){
+    var wantMusic=/(?:^|[?&])music=1(?:&|$)/.test(location.search);
+    if(wantMusic){
+      var ck=document.getElementById('musicOnly');
+      if(ck){ ck.checked=true; toggleMusic(true); }
+    } else if(${items.length === 0 ? 'true' : 'false'}){
+      switchSource(1);
+    }
+  })();`
       : ''
   }
   `;

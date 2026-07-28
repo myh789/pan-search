@@ -656,31 +656,61 @@ adminRoutes.get('/api_list/getList', async (c) => {
 adminRoutes.post('/api_list/add', async (c) => {
   const body = await c.req.parseBody();
   const t = nowSec();
-  await c.env.DB.prepare(
-    `INSERT INTO api_list (name, type, pantype, url, method, fixed_params, headers, field_map, count, html_item, html_title, html_url, html_type, html_url2, weight, status, create_time, update_time)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  )
-    .bind(
-      String(body.name || ''),
-      String(body.type || 'api'),
-      Number(body.pantype || 0),
-      String(body.url || ''),
-      String(body.method || 'GET'),
-      String(body.fixed_params || '{}'),
-      String(body.headers || '{}'),
-      String(body.field_map || '{}'),
-      Number(body.count || 10),
-      String(body.html_item || ''),
-      String(body.html_title || ''),
-      String(body.html_url || ''),
-      Number(body.html_type || 0),
-      String(body.html_url2 || ''),
-      Number(body.weight || 0),
-      Number(body.status ?? 1),
-      t,
-      t
+  const scene = Number(body.scene) === 1 ? 1 : 0;
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO api_list (name, type, pantype, url, method, fixed_params, headers, field_map, count, html_item, html_title, html_url, html_type, html_url2, weight, status, scene, create_time, update_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-    .run();
+      .bind(
+        String(body.name || ''),
+        String(body.type || 'api'),
+        Number(body.pantype || 0),
+        String(body.url || ''),
+        String(body.method || 'GET'),
+        String(body.fixed_params || '{}'),
+        String(body.headers || '{}'),
+        String(body.field_map || '{}'),
+        Number(body.count || 10),
+        String(body.html_item || ''),
+        String(body.html_title || ''),
+        String(body.html_url || ''),
+        Number(body.html_type || 0),
+        String(body.html_url2 || ''),
+        Number(body.weight || 0),
+        Number(body.status ?? 1),
+        scene,
+        t,
+        t
+      )
+      .run();
+  } catch {
+    await c.env.DB.prepare(
+      `INSERT INTO api_list (name, type, pantype, url, method, fixed_params, headers, field_map, count, html_item, html_title, html_url, html_type, html_url2, weight, status, create_time, update_time)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        String(body.name || ''),
+        String(body.type || 'api'),
+        Number(body.pantype || 0),
+        String(body.url || ''),
+        String(body.method || 'GET'),
+        String(body.fixed_params || '{}'),
+        String(body.headers || '{}'),
+        String(body.field_map || '{}'),
+        Number(body.count || 10),
+        String(body.html_item || ''),
+        String(body.html_title || ''),
+        String(body.html_url || ''),
+        Number(body.html_type || 0),
+        String(body.html_url2 || ''),
+        Number(body.weight || 0),
+        Number(body.status ?? 1),
+        t,
+        t
+      )
+      .run();
+  }
   await invalidateApiListCache(c.env);
   await bumpAdminStats(c.env, { lines: 1 });
   return c.json(jok('添加成功'));
@@ -688,30 +718,59 @@ adminRoutes.post('/api_list/add', async (c) => {
 
 adminRoutes.post('/api_list/update', async (c) => {
   const body = await c.req.parseBody();
-  await c.env.DB.prepare(
-    `UPDATE api_list SET name=?, type=?, pantype=?, url=?, method=?, fixed_params=?, headers=?, field_map=?, count=?, html_item=?, html_title=?, html_url=?, html_type=?, html_url2=?, weight=?, status=?, update_time=? WHERE id=?`
-  )
-    .bind(
-      String(body.name || ''),
-      String(body.type || 'api'),
-      Number(body.pantype || 0),
-      String(body.url || ''),
-      String(body.method || 'GET'),
-      String(body.fixed_params || '{}'),
-      String(body.headers || '{}'),
-      String(body.field_map || '{}'),
-      Number(body.count || 10),
-      String(body.html_item || ''),
-      String(body.html_title || ''),
-      String(body.html_url || ''),
-      Number(body.html_type || 0),
-      String(body.html_url2 || ''),
-      Number(body.weight || 0),
-      Number(body.status ?? 1),
-      nowSec(),
-      Number(body.id)
+  const scene = Number(body.scene) === 1 ? 1 : 0;
+  try {
+    await c.env.DB.prepare(
+      `UPDATE api_list SET name=?, type=?, pantype=?, url=?, method=?, fixed_params=?, headers=?, field_map=?, count=?, html_item=?, html_title=?, html_url=?, html_type=?, html_url2=?, weight=?, status=?, scene=?, update_time=? WHERE id=?`
     )
-    .run();
+      .bind(
+        String(body.name || ''),
+        String(body.type || 'api'),
+        Number(body.pantype || 0),
+        String(body.url || ''),
+        String(body.method || 'GET'),
+        String(body.fixed_params || '{}'),
+        String(body.headers || '{}'),
+        String(body.field_map || '{}'),
+        Number(body.count || 10),
+        String(body.html_item || ''),
+        String(body.html_title || ''),
+        String(body.html_url || ''),
+        Number(body.html_type || 0),
+        String(body.html_url2 || ''),
+        Number(body.weight || 0),
+        Number(body.status ?? 1),
+        scene,
+        nowSec(),
+        Number(body.id)
+      )
+      .run();
+  } catch {
+    await c.env.DB.prepare(
+      `UPDATE api_list SET name=?, type=?, pantype=?, url=?, method=?, fixed_params=?, headers=?, field_map=?, count=?, html_item=?, html_title=?, html_url=?, html_type=?, html_url2=?, weight=?, status=?, update_time=? WHERE id=?`
+    )
+      .bind(
+        String(body.name || ''),
+        String(body.type || 'api'),
+        Number(body.pantype || 0),
+        String(body.url || ''),
+        String(body.method || 'GET'),
+        String(body.fixed_params || '{}'),
+        String(body.headers || '{}'),
+        String(body.field_map || '{}'),
+        Number(body.count || 10),
+        String(body.html_item || ''),
+        String(body.html_title || ''),
+        String(body.html_url || ''),
+        Number(body.html_type || 0),
+        String(body.html_url2 || ''),
+        Number(body.weight || 0),
+        Number(body.status ?? 1),
+        nowSec(),
+        Number(body.id)
+      )
+      .run();
+  }
   await invalidateApiListCache(c.env);
   return c.json(jok('更新成功'));
 });

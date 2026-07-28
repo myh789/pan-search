@@ -3,12 +3,14 @@ import { api } from '../api/client';
 
 const panLabel: Record<number, string> = { 0: '夸克网盘', 2: '百度网盘', 3: 'UC网盘', 4: '迅雷云盘' };
 const typeLabel: Record<string, string> = { api: '接口', html: '网页', tg: 'TG频道', kk: 'KK' };
+const sceneLabel: Record<number, string> = { 0: '资源', 1: '音乐' };
 
 const empty = {
   id: 0,
   name: '',
   type: 'api',
   pantype: 0,
+  scene: 0,
   url: '',
   method: 'GET',
   weight: 10,
@@ -59,6 +61,19 @@ export function ApiList() {
             </button>
           ))}
         </div>
+      </div>
+      <div className="field">
+        <label>搜索场景</label>
+        <div className="seg">
+          {[0, 1].map((s) => (
+            <button key={s} type="button" className={form.scene === s ? 'active' : ''} onClick={() => setForm({ ...form, scene: s })}>
+              {sceneLabel[s]}
+            </button>
+          ))}
+        </div>
+        <p className="tips">
+          <em>资源</em>：前台「全网搜」；<em>音乐</em>：勾选「音乐」后只走这些线路。对照见 docs/MUSIC-SEARCH-LINES.md
+        </p>
       </div>
       <div className="field">
         <label>线路名称</label>
@@ -171,12 +186,16 @@ export function ApiList() {
         <a className="plain sm" style={{ padding: '6px 12px', border: '1px solid var(--line-strong)', borderRadius: 4 }} href="/api/other/web_search?title=仙逆&is_show=1&is_type=4" target="_blank" rel="noreferrer">
           迅雷测试
         </a>
+        <a className="plain sm" style={{ padding: '6px 12px', border: '1px solid var(--line-strong)', borderRadius: 4 }} href="/api/other/web_search?title=%E5%91%A8%E6%9D%B0%E4%BC%A6%20flac&is_show=1&scene=1" target="_blank" rel="noreferrer">
+          音乐测试
+        </a>
       </div>
       <table>
         <thead>
           <tr>
             <th style={{ width: 60 }}>ID</th>
             <th style={{ width: 100 }}>网盘类型</th>
+            <th style={{ width: 70 }}>场景</th>
             <th>线路名称</th>
             <th>地址</th>
             <th style={{ width: 80 }}>类型</th>
@@ -191,6 +210,7 @@ export function ApiList() {
             <tr key={it.id}>
               <td>{it.id}</td>
               <td>{panLabel[it.pantype] || '夸克网盘'}</td>
+              <td>{sceneLabel[Number(it.scene) === 1 ? 1 : 0]}</td>
               <td>{it.name}</td>
               <td style={{ maxWidth: 220, wordBreak: 'break-all' }}>{it.url}</td>
               <td>{typeLabel[it.type] || it.type}</td>
@@ -216,6 +236,7 @@ export function ApiList() {
                       name: it.name || '',
                       type: it.type || 'api',
                       pantype: it.pantype || 0,
+                      scene: Number(it.scene) === 1 ? 1 : 0,
                       url: it.url || '',
                       method: it.method || 'GET',
                       weight: it.weight || 10,

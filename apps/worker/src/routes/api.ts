@@ -94,7 +94,8 @@ apiRoutes.get('/other/web_search', async (c) => {
   const title = c.req.query('title') || '';
   const is_type = Number(c.req.query('is_type') || 0);
   const is_show = Number(c.req.query('is_show') || 0);
-  const stream = await streamWebSearch(c.env, conf, title, is_type, is_show);
+  const scene = Number(c.req.query('scene') || 0) === 1 ? 1 : 0;
+  const stream = await streamWebSearch(c.env, conf, title, is_type, is_show, scene);
   return new Response(stream, {
     headers: {
       'Content-Type': 'text/event-stream; charset=utf-8',

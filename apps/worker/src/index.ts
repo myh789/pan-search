@@ -137,9 +137,10 @@ async function handleSearch(c: any, slug: string) {
     .filter((c: any) => Number(c.status) === 0)
     .map((c: any) => ({ source_category_id: c.source_category_id, name: c.name }));
 
-  const panTabs = await getCachedPanTabs(c.env);
+  const panTabs = await getCachedPanTabs(c.env, 0);
+  const musicPanTabs = await getCachedPanTabs(c.env, 1);
 
-  return c.html(await renderList(c.env, conf, name, page, cate, list, categories, panTabs));
+  return c.html(await renderList(c.env, conf, name, page, cate, list, categories, panTabs, musicPanTabs));
 }
 
 app.get('/s/:slug', (c) => handleSearch(c, c.req.param('slug')));

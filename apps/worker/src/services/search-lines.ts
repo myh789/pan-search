@@ -259,11 +259,13 @@ export async function streamWebSearch(
   conf: Record<string, string>,
   title: string,
   isType: number,
-  isShow: number
+  isShow: number,
+  scene = 0
 ): Promise<ReadableStream> {
   const encoder = new TextEncoder();
   const banKeywords = (conf.ban_keywords || '').split(',').map((s) => s.trim()).filter(Boolean);
   const blocked = banKeywords.some((k) => k && title.includes(k));
+  const sceneN = Number(scene) === 1 ? 1 : 0;
 
   return new ReadableStream({
     async start(controller) {
@@ -274,9 +276,13 @@ export async function streamWebSearch(
         return;
       }
       const { getCachedApiList } = await import('./cache');
-      const list = await getCachedApiList(env, isType);
+      const list = await getCachedApiList(env, isType, sceneN);
       if (!list.length) {
-        send('data: [DONE] 暂无可用线路\n\n');
+        send(
+          sceneN === 1
+            ? 'data: [DONE] 暂无可用音乐线路，请在后台将线路场景设为「音乐」\n\n'
+            : 'data: [DONE] 暂无可用线路\n\n'
+        );
         controller.close();
         return;
       }

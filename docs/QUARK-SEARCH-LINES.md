@@ -123,4 +123,6 @@ Worker 已识别 `alipansou.com` / `aipanso.com` 等列表页结构；HTML 解�
 2. 前台搜一个冷门词，切到「全网搜」看是否刷出结果  
 3. 某条长期无结果 → 关掉该线路或换源  
 
+音乐 / 无损向线路（过滤词、音乐 TG 频道）见 [MUSIC-SEARCH-LINES.md](./MUSIC-SEARCH-LINES.md)。
+
 相关部署步骤见 [DEPLOY-CLOUDFLARE.md](./DEPLOY-CLOUDFLARE.md)。

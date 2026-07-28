@@ -180,9 +180,10 @@ npx wrangler d1 migrations apply pan-search --remote
 第一行是装依赖；第二行是把表结构写进 Cloudflare 上的 D1。  
 若弹出登录 Cloudflare，按提示在浏览器点允许即可。
 
-> 之后每次仓库新增迁移（如 `0005_temp_source_ttl`、`0006_source_top_ai`），上线前都要再执行一次  
+> 之后每次仓库新增迁移（如 `0005_temp_source_ttl`、`0006_source_top_ai`、`0007_api_list_scene`），上线前都要再执行一次  
 > `npx wrangler d1 migrations apply pan-search --remote`。  
-> `0006` 会加资源置顶列，并写入 AI 配置项（Agnes）。
+> `0006` 会加资源置顶列，并写入 AI 配置项（Agnes）。  
+> `0007` 给接口线路加「资源/音乐」场景字段（前台音乐勾选依赖）。
 
 ### 做法 B：在 D1 网页控制台手工执行 SQL（适合不想用终端）
 
