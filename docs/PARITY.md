@@ -31,6 +31,7 @@ npm run smoke:sitemap
 | Cron、CORS、`/health`、`robots.txt` | ✅ |
 | 微信 / Chatbot 回调入口 | ⚠️ 可用但能力简化 |
 | D1 读优化：stats / conf / 分类 / 线路 KV、同请求 conf 复用、bootstrap 短路 | ✅ |
+| **本地搜索 KV 精简索引**（脏标记 + Cron/清缓存重建；无索引回退 D1 LIKE） | ✅ |
 
 ## 转存说明（核心）
 

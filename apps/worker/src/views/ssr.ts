@@ -143,6 +143,7 @@ export function layout(
       : '';
   const appNameJs = JSON.stringify(conf.app_name || '');
   const pcTypeConf = Number(conf.pc_type || 0);
+  const linkTtlMin = Math.max(5, Math.min(10080, Number(conf.temp_source_ttl) || 30));
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -250,6 +251,7 @@ ${conf.seo_statistics || ''}
 <script>
 var APP_NAME=${appNameJs};
 var pc_type=${pcTypeConf};
+var LINK_TTL_MIN=${linkTtlMin};
 var is_m=0;
 function handleDeviceType(){
   var mobile=window.matchMedia('(max-width: 768px)').matches;
@@ -261,7 +263,14 @@ window.addEventListener('resize',handleDeviceType);
 
 function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(function(){t.style.display='none'},1800)}
 function showModal(id){document.getElementById(id).classList.add('show')}
-function hideModal(id){document.getElementById(id).classList.remove('show')}
+function hideModal(id){
+  document.getElementById(id).classList.remove('show');
+  if(id==='urlModal'){
+    window.__dlgAborted=true;
+    if(window.__dlgTimer){ clearInterval(window.__dlgTimer); window.__dlgTimer=null; }
+    if(window.__dlgAbortCtrl){ try{ window.__dlgAbortCtrl.abort(); }catch(e){} window.__dlgAbortCtrl=null; }
+  }
+}
 function searchBtn(kw){
   kw=(kw||'').trim();
   if(!kw){toast('请输入你要搜索的内容~');return}
@@ -324,6 +333,10 @@ function showUrlFun(item){
       html+='</div>';
     }
     if(item.code) html+='<div class="res-code">提取码 <b>'+item.code+'</b></div>';
+    if(item.linkTtl || Number(item.is_time)===1){
+      var ttl=Number(item.linkTtl||LINK_TTL_MIN)||30;
+      html+='<div class="res-ttl">链接约 <b>'+ttl+'</b> 分钟内有效，请及时保存到网盘</div>';
+    }
     html+='</div>';
   } else {
     html+='<div class="dialogUrl-fail"><div class="title">获取失败</div><div class="tips">'+(item.message||'未知错误')+'</div></div>';
@@ -736,23 +749,60 @@ export async function renderList(
       item.showUrl=item.url; showUrlFun(item); return;
     }
     showModal('urlModal');
-    document.getElementById('urlModalBody').innerHTML='<div class="dialogUrl-loading"><div class="dlg-spinner" aria-hidden="true"></div><p>链接安全检查中，请稍后</p></div>';
+    window.__dlgAborted=false;
+    if(window.__dlgTimer){ clearInterval(window.__dlgTimer); window.__dlgTimer=null; }
+    var WAIT_SEC=40;
+    var left=WAIT_SEC;
+    function renderLoading(){
+      document.getElementById('urlModalBody').innerHTML=
+        '<div class="dialogUrl-loading"><div class="dlg-spinner" aria-hidden="true"></div>'+
+        '<p>链接安全检查中，请稍后</p>'+
+        '<p class="dlg-countdown">预计还需 <b id="dlgCountNum">'+left+'</b> 秒</p></div>';
+    }
+    renderLoading();
+    window.__dlgTimer=setInterval(function(){
+      left--;
+      var n=document.getElementById('dlgCountNum');
+      if(n) n.textContent=String(Math.max(0,left));
+      if(left<=0){
+        if(window.__dlgTimer){ clearInterval(window.__dlgTimer); window.__dlgTimer=null; }
+        window.__dlgAborted=true;
+        if(window.__dlgAbortCtrl){ try{ window.__dlgAbortCtrl.abort(); }catch(e){} }
+        item.showUrl='';
+        item.message='资源貌似不见了，请选择其他资源尝试';
+        showUrlFun(item);
+      }
+    },1000);
     try{
+      var ctrl=typeof AbortController!=='undefined'?new AbortController():null;
+      window.__dlgAbortCtrl=ctrl;
       var r=await fetch('/api/other/save_url',{
         method:'POST',
         headers:{'content-type':'application/json'},
-        body:JSON.stringify({ url:encodeURIComponent(item.url), title:item.title, stoken:item.stoken })
+        body:JSON.stringify({ url:encodeURIComponent(item.url), title:item.title, stoken:item.stoken }),
+        signal: ctrl?ctrl.signal:undefined
       });
+      if(window.__dlgAborted) return;
+      if(window.__dlgTimer){ clearInterval(window.__dlgTimer); window.__dlgTimer=null; }
+      window.__dlgAbortCtrl=null;
       var j=await r.json();
+      if(window.__dlgAborted) return;
       if(j.code==200){
         item.url=j.data.url||j.data.share_url; item.showUrl=item.url;
         if(j.data.code) item.code=j.data.code;
+        item.linkTtl=LINK_TTL_MIN;
+        item.is_time=1;
       } else {
         item.showUrl=''; item.message=j.message||'获取失败';
       }
       showUrlFun(item);
     }catch(e){
-      item.showUrl=''; item.message='网络错误'; showUrlFun(item);
+      if(window.__dlgAborted) return;
+      if(window.__dlgTimer){ clearInterval(window.__dlgTimer); window.__dlgTimer=null; }
+      window.__dlgAbortCtrl=null;
+      item.showUrl='';
+      item.message=(e&&e.name==='AbortError')?'资源貌似不见了，请选择其他资源尝试':'网络错误';
+      showUrlFun(item);
     }
   }
   ${

@@ -4,7 +4,9 @@ export function Clean() {
   return (
     <div className="card" style={{ maxWidth: 560 }}>
       <div className="card-hd">清理缓存</div>
-      <p className="tips">清理站点配置缓存、排行榜缓存与 sitemap 缓存。修改基础设置或转存相关配置后如未生效，可点此清理。</p>
+      <p className="tips">
+        清理站点配置、排行榜、sitemap，并<strong>重建本地搜索 KV 索引</strong>（导入/改资源后若搜索结果偏旧，点此即可；否则约每 10 分钟 Cron 自动重建）。
+      </p>
       <button
         type="button"
         onClick={async () => {

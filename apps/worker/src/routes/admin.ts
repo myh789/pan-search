@@ -190,7 +190,10 @@ adminRoutes.post('/system/clean', async (c) => {
   await invalidateCategories(c.env);
   await invalidateApiListCache(c.env);
   await onSourceMutated(c.env, 0);
-  return c.json(jok('清理完成'));
+  const { invalidateSearchIndex, rebuildSearchIndex } = await import('../services/search-index');
+  await invalidateSearchIndex(c.env);
+  const total = await rebuildSearchIndex(c.env, true);
+  return c.json(jok(total != null ? `清理完成，搜索索引已重建（${total} 条）` : '清理完成'));
 });
 
 // ---- source ----
@@ -296,6 +299,8 @@ adminRoutes.post('/source/update', async (c) => {
       )
       .run();
   }
+  const { markSearchIndexDirty } = await import('../services/search-index');
+  await markSearchIndexDirty(c.env);
   return c.json(jok('更新成功'));
 });
 
@@ -311,6 +316,8 @@ adminRoutes.post('/source/toggleTop', async (c) => {
   await c.env.DB.prepare('UPDATE source SET is_top = ?, update_time = ? WHERE source_id = ?')
     .bind(next, nowSec(), id)
     .run();
+  const { markSearchIndexDirty } = await import('../services/search-index');
+  await markSearchIndexDirty(c.env);
   return c.json(jok(next ? '已置顶' : '已取消置顶', { is_top: next }));
 });
 
@@ -368,6 +375,11 @@ adminRoutes.post('/source/aiFill', async (c) => {
     } catch (e: any) {
       results.push({ source_id: id, ok: false, message: e?.message || '失败' });
     }
+  }
+
+  if (filled > 0) {
+    const { markSearchIndexDirty } = await import('../services/search-index');
+    await markSearchIndexDirty(c.env);
   }
 
   return c.json(

@@ -1220,6 +1220,29 @@ a:hover {
     font-weight: 600;
     line-height: 1.5;
 }
+.dialogUrlBox .dialogUrl .dialogUrl-loading .dlg-countdown {
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 400;
+    color: #909399;
+}
+.dialogUrlBox .dialogUrl .dialogUrl-loading .dlg-countdown b {
+    color: var(--theme-theme, #133ab3);
+    font-weight: 600;
+}
+.dialogUrlBox .dialogUrl .res-ttl {
+    margin-top: 12px;
+    padding: 8px 10px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #b88230;
+    background: #fdf6ec;
+    border-radius: 6px;
+    text-align: center;
+}
+.dialogUrlBox .dialogUrl .res-ttl b {
+    color: #e6a23c;
+}
 
 @keyframes dlgSpin {
     to {

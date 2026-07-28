@@ -1,5 +1,6 @@
 import type { Env } from '../env';
 import { nowSec, segment } from '../utils';
+import { loadSearchIndex, searchIndexInMemory } from './search-index';
 
 export type SourceListQuery = {
   title?: string;
@@ -14,6 +15,23 @@ export type SourceListQuery = {
 };
 
 export async function getSourceList(env: Env, conf: Record<string, string>, q: SourceListQuery) {
+  // Prefer KV compact index for formal-source listing/search (0 D1 reads when warm)
+  try {
+    if (Number(q.is_time) !== 1 && Number(q.day) !== 2) {
+      const idx = await loadSearchIndex(env);
+      if (idx && idx.length) {
+        const fromKv = searchIndexInMemory(idx, conf, q);
+        if (fromKv) return fromKv;
+      }
+    }
+  } catch {
+    /* fall through to D1 */
+  }
+
+  return getSourceListFromD1(env, conf, q);
+}
+
+async function getSourceListFromD1(env: Env, conf: Record<string, string>, q: SourceListQuery) {
   const page = Math.max(1, Number(q.page ?? q.page_no) || 1);
   const pageSize = Math.min(50, Math.max(1, Number(q.page_size) || 20));
   const offset = (page - 1) * pageSize;

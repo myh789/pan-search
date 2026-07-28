@@ -107,6 +107,8 @@ export async function handleScheduled(event: ScheduledEvent, env: Env) {
     await cronDailyTransfer(env);
     return;
   }
-  // default */10 cleanup
+  // default */10 cleanup + rebuild search index when dirty
   await cronCleanupTemp(env);
+  const { cronRebuildSearchIndex } = await import('../services/search-index');
+  await cronRebuildSearchIndex(env);
 }

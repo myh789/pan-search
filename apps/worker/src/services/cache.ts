@@ -145,4 +145,6 @@ export async function onSourceMutated(env: Env, sourceDelta = 0) {
   if (sourceDelta) await bumpAdminStats(env, { sources: sourceDelta });
   else await invalidateAdminStats(env);
   await invalidateHomeCaches(env);
+  const { markSearchIndexDirty } = await import('./search-index');
+  await markSearchIndexDirty(env);
 }
