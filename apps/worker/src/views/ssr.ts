@@ -130,6 +130,7 @@ export function layout(
     body: string;
     keyword?: string;
     fixed?: boolean;
+    /** @deprecated 全站禁 referrer 会导致百度统计安装检测失败；外链已用 rel=noreferrer */
     homeReferrerNever?: boolean;
     extraScript?: string;
   }
@@ -156,7 +157,7 @@ export function layout(
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,user-scalable=no,maximum-scale=1.0"/>
 <meta name="renderer" content="webkit"/>
-<meta name="referrer" content="${opts.homeReferrerNever ? 'never' : 'no-referrer'}"/>
+<meta name="referrer" content="strict-origin-when-cross-origin"/>
 <title>${esc(opts.title)}</title>
 <meta name="keywords" content="${esc(opts.keywords || conf.app_keywords)}"/>
 <meta name="description" content="${esc(opts.description || conf.app_description)}"/>
@@ -553,7 +554,6 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
     title: `${conf.app_name} - ${conf.app_title}`,
     body,
     fixed: true,
-    homeReferrerNever: true,
     extraScript,
   });
 }
