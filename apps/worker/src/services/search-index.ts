@@ -61,9 +61,12 @@ function truncDesc(s: string) {
 
 export async function markSearchIndexDirty(env: Env) {
   globalThis.__panSearchIdx = undefined;
-  // 已脏则不再写 KV，减少批量导入时写放大
-  if ((await env.KV.get(DIRTY_KEY)) === '1') return;
-  await env.KV.put(DIRTY_KEY, '1', { expirationTtl: 86400 * 7 });
+  // 去掉 meta，强制 loadSearchIndex 失效；否则 dirty 过期后仍会读到旧分片（含过期 is_top）
+  const ops: Promise<unknown>[] = [env.KV.delete(META_KEY)];
+  if ((await env.KV.get(DIRTY_KEY)) !== '1') {
+    ops.push(env.KV.put(DIRTY_KEY, '1', { expirationTtl: 86400 * 7 }));
+  }
+  await Promise.all(ops);
 }
 
 export async function isSearchIndexDirty(env: Env) {
