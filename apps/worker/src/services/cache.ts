@@ -220,12 +220,26 @@ export async function getCachedHomeLatest(env: Env, limit: number) {
     memBag[limit] = { at: Date.now(), list: cached };
     return cached as any[];
   }
-  const news = await env.DB.prepare(
-    `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 ORDER BY create_time DESC LIMIT ?`
-  )
-    .bind(limit)
-    .all<any>();
-  const list = news.results || [];
+  let list: any[] = [];
+  try {
+    const news = await env.DB.prepare(
+      `SELECT title, source_id as id, is_top FROM source WHERE status=1 AND is_delete=0 AND is_time=0 ORDER BY is_top DESC, create_time DESC LIMIT ?`
+    )
+      .bind(limit)
+      .all<any>();
+    list = (news.results || []).map((r) => ({
+      title: r.title,
+      id: r.id,
+      is_top: Number(r.is_top) ? 1 : 0,
+    }));
+  } catch {
+    const news = await env.DB.prepare(
+      `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 ORDER BY create_time DESC LIMIT ?`
+    )
+      .bind(limit)
+      .all<any>();
+    list = news.results || [];
+  }
   await env.KV.put(key, JSON.stringify(list), { expirationTtl: TTL_HOME });
   memBag[limit] = { at: Date.now(), list };
   return list;
@@ -261,9 +275,9 @@ export async function getCachedHomeCatLists(env: Env, limit = HOME_CAT_FETCH): P
       const ids = cats.map((c: any) => Number(c.source_category_id)).filter(Boolean);
       const placeholders = ids.map(() => '?').join(',');
       const rows = await env.DB.prepare(
-        `SELECT source_category_id, title, source_id as id FROM (
-           SELECT source_category_id, title, source_id, create_time,
-             ROW_NUMBER() OVER (PARTITION BY source_category_id ORDER BY create_time DESC) AS rn
+        `SELECT source_category_id, title, source_id as id, is_top FROM (
+           SELECT source_category_id, title, source_id, is_top, create_time,
+             ROW_NUMBER() OVER (PARTITION BY source_category_id ORDER BY is_top DESC, create_time DESC) AS rn
            FROM source
            WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id IN (${placeholders})
          ) WHERE rn <= ?`
@@ -273,18 +287,31 @@ export async function getCachedHomeCatLists(env: Env, limit = HOME_CAT_FETCH): P
       for (const r of rows.results || []) {
         const k = String(r.source_category_id);
         if (!map[k]) map[k] = [];
-        map[k].push({ title: r.title, id: r.id });
+        map[k].push({ title: r.title, id: r.id, is_top: Number(r.is_top) ? 1 : 0 });
       }
     } catch {
-      // 旧 SQLite 无窗口函数时回退并行查询
+      // 旧 SQLite 无窗口函数 / 无 is_top 时回退并行查询
       await Promise.all(
         cats.map(async (cat: any) => {
-          const rows = await env.DB.prepare(
-            `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-          )
-            .bind(cat.source_category_id, HOME_CAT_FETCH)
-            .all<any>();
-          map[String(cat.source_category_id)] = rows.results || [];
+          try {
+            const rows = await env.DB.prepare(
+              `SELECT title, source_id as id, is_top FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY is_top DESC, create_time DESC LIMIT ?`
+            )
+              .bind(cat.source_category_id, HOME_CAT_FETCH)
+              .all<any>();
+            map[String(cat.source_category_id)] = (rows.results || []).map((r) => ({
+              title: r.title,
+              id: r.id,
+              is_top: Number(r.is_top) ? 1 : 0,
+            }));
+          } catch {
+            const rows = await env.DB.prepare(
+              `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+            )
+              .bind(cat.source_category_id, HOME_CAT_FETCH)
+              .all<any>();
+            map[String(cat.source_category_id)] = rows.results || [];
+          }
         })
       );
     }

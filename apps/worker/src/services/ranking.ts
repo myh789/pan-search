@@ -82,17 +82,31 @@ export async function refreshAllRankings(env: Env) {
       await fetchChannelRanking(env, cat.name, { force: true });
       continue;
     }
-    const local = await env.DB.prepare(
-      `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
-    )
-      .bind(cat.source_category_id, limit)
-      .all<any>();
-    const list = (local.results || []).map((x: any, i: number) => ({
-      title: x.title,
-      id: x.id,
-      rank: i + 1,
-      times: '',
-    }));
-    await env.KV.put(`ranking:${cat.name}`, JSON.stringify(list), { expirationTtl: 43200 });
-  }
-}
+    try {
+      const local = await env.DB.prepare(
+        `SELECT title, source_id as id, is_top FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY is_top DESC, create_time DESC LIMIT ?`
+      )
+        .bind(cat.source_category_id, limit)
+        .all<any>();
+      const list = (local.results || []).map((x: any, i: number) => ({
+        title: x.title,
+        id: x.id,
+        is_top: Number(x.is_top) ? 1 : 0,
+        rank: i + 1,
+        times: '',
+      }));
+      await env.KV.put(`ranking:${cat.name}`, JSON.stringify(list), { expirationTtl: 43200 });
+    } catch {
+      const local = await env.DB.prepare(
+        `SELECT title, source_id as id FROM source WHERE status=1 AND is_delete=0 AND is_time=0 AND source_category_id=? ORDER BY create_time DESC LIMIT ?`
+      )
+        .bind(cat.source_category_id, limit)
+        .all<any>();
+      const list = (local.results || []).map((x: any, i: number) => ({
+        title: x.title,
+        id: x.id,
+        rank: i + 1,
+        times: '',
+      }));
+      await env.KV.put(`ranking:${cat.name}`, JSON.stringify(list), { expirationTtl: 43200 });
+    }

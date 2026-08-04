@@ -194,6 +194,7 @@ ${conf.home_css || ''}
 .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.78); color:#fff; padding:8px 16px; border-radius:8px; z-index:1000; display:none; }
 .listBox .left .list .item .btns .btn .icon { width:16px; height:16px; margin-right:4px; vertical-align:middle; }
 .listBox .left .list .item .title .tag-top { display:inline-block; margin-right:6px; padding:0 5px; font-size:12px; line-height:18px; color:#fff; background:#e6a23c; border-radius:3px; vertical-align:middle; font-weight:600; }
+.rankBox .item .tag-top-home, .block .item .tag-top-home { display:inline-block; margin-right:4px; padding:0 4px; font-size:11px; line-height:16px; font-style:normal; color:#fff; background:#e6a23c; border-radius:3px; vertical-align:middle; font-weight:600; }
 .details .cat .r .icon { width:18px; height:18px; margin-right:6px; vertical-align:middle; }
 </style>
 ${conf.seo_statistics || ''}
@@ -409,17 +410,18 @@ export async function renderHome(env: Env, conf: Record<string, string>) {
       .slice(0, max)
       .map((x: any, i: number) => {
         const href = x.id ? `/d/${x.id}.html` : `/s/${encodeURIComponent(x.title)}.html`;
+        const topMark = Number(x.is_top) ? '<i class="tag-top-home" title="置顶">顶</i>' : '';
         if (withImg) {
           const src = x.src
             ? `<img src="${esc(x.src)}" alt="${esc(x.title)}"/><span>Loading...</span>`
             : `<span class="titleLoading">${esc(String(x.title || '').slice(0, 20))}${
                 String(x.title || '').length > 20 ? '...' : ''
               }</span>`;
-          return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><div class="img">${src}</div><p>${esc(
+          return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><div class="img">${src}</div><p>${topMark}${esc(
             x.title
           )}</p></a>`;
         }
-        return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><p><span>${i + 1}</span>${esc(
+        return `<a href="${href}" target="_blank" class="item" data-rank-i="${i}"><p><span>${i + 1}</span>${topMark}${esc(
           x.title
         )}</p></a>`;
       })
