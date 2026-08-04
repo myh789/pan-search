@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>搜索中转</title>
+  <script>
+    (function () {
+      var qs = new URLSearchParams(location.search);
+      var q = qs.get('q') || qs.get('title') || '';
+      var type = qs.get('type') || qs.get('is_type') || '0';
+      var next = '/?q=' + encodeURIComponent(q) + '&type=' + encodeURIComponent(type);
+      location.replace(next);
+    })();
+  </script>
+</head>
+<body>
+  <p style="font-family:sans-serif;padding:24px;color:#64748b">正在跳转到搜索页…</p>
+</body>
+</html>

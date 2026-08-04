@@ -18,10 +18,14 @@ export async function getSourceList(env: Env, conf: Record<string, string>, q: S
   // Prefer KV compact index for formal-source listing/search (0 D1 reads when warm)
   try {
     if (Number(q.is_time) !== 1 && Number(q.day) !== 2) {
-      const idx = await loadSearchIndex(env);
-      if (idx && idx.length) {
-        const fromKv = searchIndexInMemory(idx, conf, q);
-        if (fromKv) return fromKv;
+      const { isSearchIndexDirty } = await import('./search-index');
+      // 索引脏时 KV 里仍是旧 is_top，继续用会让「置顶」前台不生效；改走 D1
+      if (!(await isSearchIndexDirty(env))) {
+        const idx = await loadSearchIndex(env);
+        if (idx && idx.length) {
+          const fromKv = searchIndexInMemory(idx, conf, q);
+          if (fromKv) return fromKv;
+        }
       }
     }
   } catch {
@@ -92,7 +96,7 @@ async function getSourceListFromD1(env: Env, conf: Record<string, string>, q: So
   if (titleSearch) {
     try {
       items = await env.DB.prepare(
-        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, is_top, create_time as time
          FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
       )
         .bind(...params, pageSize + 1, offset)
@@ -117,7 +121,7 @@ async function getSourceListFromD1(env: Env, conf: Record<string, string>, q: So
     total = countRow?.c || 0;
     try {
       items = await env.DB.prepare(
-        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, create_time as time
+        `SELECT source_id as id, source_category_id, title, url, description, is_type, code, page_views, vod_content, vod_pic, is_top, create_time as time
          FROM source ${whereSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`
       )
         .bind(...params, pageSize, offset)
@@ -138,6 +142,7 @@ async function getSourceListFromD1(env: Env, conf: Record<string, string>, q: So
     page_size: pageSize,
     items: (items.results || []).map((it) => ({
       ...it,
+      is_top: Number(it.is_top) ? 1 : 0,
       times: it.time ? new Date(it.time * 1000).toISOString().slice(0, 10) : '',
     })),
   };

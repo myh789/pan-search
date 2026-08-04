@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>管理后台 · PanSearch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/qfadmin/style.css"/>
+  <style>
+    /* 内联兜底：CSS 加载失败时仍可用 */
+    :root{--bg:#eef3f9;--ink:#0f172a;--muted:#64748b;--line:#d5dee8;--theme:#133ab3;--card:#fff}
+    *{box-sizing:border-box}
+    [hidden]{display:none!important}
+    body{margin:0;font-family:"Outfit","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+  </style>
+</head>
+<body>
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="app">
+    <div id="loginView" class="login-shell">
+      <div class="login-panel">
+        <div class="login-brand">
+          <span class="logo-mark">P</span>
+          <div>
+            <strong>PanSearch</strong>
+            <p>管理后台</p>
+          </div>
+        </div>
+        <h1>登录</h1>
+        <p class="login-lead">配置全网搜线路、屏蔽词与网盘凭证</p>
+        <label class="field" for="account">账号
+          <input id="account" value="admin" autocomplete="username"/>
+        </label>
+        <label class="field" for="password">密码
+          <input id="password" type="password" autocomplete="current-password"/>
+        </label>
+        <p id="loginError" class="login-error" role="alert"></p>
+        <button type="button" class="btn primary block" id="loginBtn">登录</button>
+      </div>
+    </div>
+
+    <div id="mainView" class="shell" hidden>
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo-mark">P</span>
+          <div>
+            <strong>PanSearch</strong>
+            <span>Admin</span>
+          </div>
+        </div>
+        <nav>
+          <button type="button" data-tab="lines" class="active">全网搜线路</button>
+          <button type="button" data-tab="ban">关键词屏蔽</button>
+          <button type="button" data-tab="cookies">Cookies</button>
+          <button type="button" data-tab="misc">转存参数</button>
+        </nav>
+        <button type="button" class="btn ghost logout" id="logoutBtn">退出登录</button>
+      </aside>
+
+      <div class="workspace">
+        <main>
+          <section data-panel="lines" class="panel">
+            <header class="page-head">
+              <div>
+                <h2>全网搜线路</h2>
+                <p class="lead">支持夸克 / 百度 / 迅雷。可一键导入示例源，或自己加地址（含 {keyword}）。</p>
+              </div>
+              <div class="actions">
+                <button type="button" class="btn ghost" id="seedQuarkLines">导入示例线路</button>
+                <button type="button" class="btn primary" id="addLine">新增线路</button>
+              </div>
+            </header>
+            <div id="lineList" class="line-list"></div>
+          </section>
+
+          <section data-panel="ban" class="panel" hidden>
+            <header class="page-head">
+              <div>
+                <h2>关键词屏蔽</h2>
+                <p class="lead">逗号分隔。搜索词命中任一关键词时直接拒绝。</p>
+              </div>
+              <button type="button" class="btn primary" id="saveBan">保存</button>
+            </header>
+            <div class="surface">
+              <label class="field">屏蔽词列表
+                <textarea id="banKeywords" rows="8" placeholder="例如：关键词1,关键词2"></textarea>
+              </label>
+            </div>
+          </section>
+
+          <section data-panel="cookies" class="panel" hidden>
+            <header class="page-head">
+              <div>
+                <h2>Cookies / Token</h2>
+                <p class="lead">夸克 / 百度 / 迅雷：填凭证 → 测试登录 → 选转存目录与临时目录。临时资源按下方 TTL 自动删除（默认 30 分钟）。</p>
+              </div>
+              <div class="actions">
+                <button type="button" class="btn primary" id="saveCookies">保存</button>
+              </div>
+            </header>
+            <div class="surface form-stack">
+              <div class="form-block">
+                <h3>夸克</h3>
+                <details class="howto span-2" open>
+                  <summary>如何获取夸克 Cookie</summary>
+                  <ol>
+                    <li>用 Chrome / Edge 打开 <a href="https://pan.quark.cn" target="_blank" rel="noopener">pan.quark.cn</a> 并登录账号。</li>
+                    <li>按 <kbd>F12</kbd> 打开开发者工具 → 切到 <b>Network / 网络</b>。</li>
+                    <li>刷新页面，随便点开一个接口请求（例如含 <code>clouddrive</code> 的）。</li>
+                    <li>在请求头 <b>Request Headers</b> 里找到 <code>Cookie</code>，整段复制。</li>
+                    <li>也可：<b>Application / 应用</b> → Cookies → <code>https://pan.quark.cn</code>，把主要项拼成
+                      <code>key=value; key2=value2</code>（需包含登录相关字段，如 <code>__pus</code> 等）。</li>
+                    <li>粘贴到下方 → <b>保存</b> → 点「测试登录」。成功后再选转存/临时目录。</li>
+                  </ol>
+                  <p class="howto-tip">Cookie 过期后前台转存会失败，重新按上面步骤更新即可。</p>
+                </details>
+                <div class="form-grid">
+                  <label class="field span-2">Cookie
+                    <textarea id="quark_cookie" rows="3" placeholder="粘贴夸克网盘 Cookie"></textarea>
+                  </label>
+                  <div class="field-actions span-2">
+                    <button type="button" class="btn ghost" id="testQuarkLogin">测试登录</button>
+                    <button type="button" class="btn ghost" id="browseQuarkFolders">浏览文件夹</button>
+                    <span class="field-hint" id="quarkLoginHint"></span>
+                  </div>
+                  <label class="field">转存目录 FID
+                    <div class="input-row">
+                      <input id="quark_file" placeholder="点击浏览选择，或手动填写"/>
+                      <button type="button" class="btn ghost" data-pick="quark_file" data-pantype="0">选目录</button>
+                    </div>
+                  </label>
+                  <label class="field">临时目录 FID
+                    <div class="input-row">
+                      <input id="quark_file_time" placeholder="建议单独建一个临时目录"/>
+                      <button type="button" class="btn ghost" data-pick="quark_file_time" data-pantype="0">选目录</button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div class="form-block">
+                <h3>百度</h3>
+                <details class="howto">
+                  <summary>如何获取百度 Cookie</summary>
+                  <ol>
+                    <li>建议用浏览器 <b>无痕/隐私模式</b>，打开 <a href="https://pan.baidu.com" target="_blank" rel="noopener">pan.baidu.com</a> 并登录。</li>
+                    <li>按 <kbd>F12</kbd> → <b>Network / 网络</b>，刷新页面。</li>
+                    <li>点开任意 <code>pan.baidu.com</code> 请求，在 Request Headers 复制完整 <code>Cookie</code>。</li>
+                    <li>也可：<b>Application / 应用</b> → Cookies → <code>https://pan.baidu.com</code>，确保含
+                      <code>BDUSS</code>、<code>STOKEN</code> 等关键字段。</li>
+                    <li>粘贴到下方 → <b>保存</b> →「测试登录」→ 再选转存/临时目录（百度用路径，如 <code>/转存</code>）。</li>
+                  </ol>
+                  <p class="howto-tip">只贴 <code>ab_sr</code> 不够，必须能在 Cookie 文本里搜到 <code>BDUSS=</code>。转存失败时前台会回退原链（提取码不是 6666 即未转存成功）。多端登录易掉线（-4 / -6）。</p>
+                </details>
+                <div class="form-grid">
+                  <label class="field span-2">Cookie
+                    <textarea id="baidu_cookie" rows="3" placeholder="须含 BDUSS=...（不要只贴 ab_sr）"></textarea>
+                  </label>
+                  <div class="field-actions span-2">
+                    <button type="button" class="btn ghost" id="testBaiduLogin">测试登录</button>
+                    <button type="button" class="btn ghost" id="browseBaiduFolders">浏览文件夹</button>
+                    <span class="field-hint" id="baiduLoginHint"></span>
+                  </div>
+                  <label class="field">转存目录路径
+                    <div class="input-row">
+                      <input id="baidu_file" placeholder="如 /转存目录"/>
+                      <button type="button" class="btn ghost" data-pick="baidu_file" data-pantype="2">选目录</button>
+                    </div>
+                  </label>
+                  <label class="field">临时目录路径
+                    <div class="input-row">
+                      <input id="baidu_file_time" placeholder="建议单独建临时目录"/>
+                      <button type="button" class="btn ghost" data-pick="baidu_file_time" data-pantype="2">选目录</button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div class="form-block">
+                <h3>迅雷</h3>
+                <details class="howto">
+                  <summary>如何获取迅雷 refresh_token</summary>
+                  <p>迅雷填的是 <b>refresh_token</b>，不是浏览器 Cookie。</p>
+                  <p><b>方法一（推荐）</b></p>
+                  <ol>
+                    <li>打开 <a href="https://pan.xunlei.com" target="_blank" rel="noopener">pan.xunlei.com</a> 并登录。</li>
+                    <li>按 <kbd>F12</kbd> → <b>Application / 应用</b>。</li>
+                    <li>左侧 <b>Local Storage</b> → 选中 <code>https://pan.xunlei.com</code>。</li>
+                    <li>找到 <code>credentials</code> 或含 <code>refresh_token</code> 的项，复制 token 字符串。</li>
+                  </ol>
+                  <p><b>方法二（抓包）</b></p>
+                  <ol>
+                    <li>同上登录后切到 <b>Network / 网络</b>。</li>
+                    <li>筛选 <code>auth/token</code> 或 <code>signin/token</code>。</li>
+                    <li>打开响应 JSON，复制字段 <code>refresh_token</code>。</li>
+                  </ol>
+                  <p class="howto-tip">保存后点「测试登录」。登录成功后系统可能自动轮换并回写新的 token，以后以后台里最新值为准。</p>
+                </details>
+                <div class="form-grid">
+                  <label class="field span-2">refresh_token
+                    <input id="xunlei_cookie" placeholder="迅雷网盘 refresh_token（不是 Cookie）"/>
+                  </label>
+                  <div class="field-actions span-2">
+                    <button type="button" class="btn ghost" id="testXunleiLogin">测试登录</button>
+                    <button type="button" class="btn ghost" id="browseXunleiFolders">浏览文件夹</button>
+                    <span class="field-hint" id="xunleiLoginHint"></span>
+                  </div>
+                  <label class="field">转存目录 ID
+                    <div class="input-row">
+                      <input id="xunlei_file" placeholder="点击浏览选择，或手动填写"/>
+                      <button type="button" class="btn ghost" data-pick="xunlei_file" data-pantype="4">选目录</button>
+                    </div>
+                  </label>
+                  <label class="field">临时目录 ID
+                    <div class="input-row">
+                      <input id="xunlei_file_time" placeholder="建议单独建一个临时目录"/>
+                      <button type="button" class="btn ghost" data-pick="xunlei_file_time" data-pantype="4">选目录</button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+              <div class="form-block">
+                <h3>其它（暂不转存）</h3>
+                <div class="form-grid">
+                  <label class="field span-2">阿里 Authorization<input id="Authorization"/></label>
+                  <label class="field">阿里 drive_id<input id="ali_drive_id"/></label>
+                  <label class="field span-2">UC Cookie<textarea id="uc_cookie" rows="2"></textarea></label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section data-panel="misc" class="panel" hidden>
+            <header class="page-head">
+              <div>
+                <h2>转存参数</h2>
+                <p class="lead">全网搜固定「转存后分享」，不展示第三方原链。可配置验链与临时资源保留时间。</p>
+              </div>
+              <div class="actions">
+                <button type="button" class="btn ghost" id="runCleanup">立即清理</button>
+                <button type="button" class="btn primary" id="saveMisc">保存</button>
+              </div>
+            </header>
+            <div class="surface">
+              <div class="form-grid">
+                <input type="hidden" id="is_quan_type" value="0"/>
+                <label class="field">链接有效性检测
+                  <select id="is_quan_zc">
+                    <option value="0">关闭（直接展示列表）</option>
+                    <option value="1">开启（列表出齐后逐条检测，无效自动移除）</option>
+                  </select>
+                </label>
+                <p class="field-hint span-2">开启后前台先展示结果并显示「检测中」，再逐条验链（夸克/百度/迅雷）：有效保留，无效删卡。关闭则不显示检测字样。默认关闭。</p>
+                <label class="field">临时资源 TTL（分钟）
+                  <input id="temp_source_ttl" type="number" min="5" max="10080"/>
+                </label>
+                <p class="field-hint span-2">前台「获取资源」写入临时目录；到期后自动从对应网盘删除（夸克/百度/迅雷）。默认 30 分钟，可点「立即清理」。</p>
+                <label class="field">夸克平台
+                  <select id="enable_quark">
+                    <option value="1">开启</option>
+                    <option value="0">关闭</option>
+                  </select>
+                </label>
+                <label class="field">百度平台
+                  <select id="enable_baidu">
+                    <option value="1">开启</option>
+                    <option value="0">关闭</option>
+                  </select>
+                </label>
+                <label class="field">迅雷平台
+                  <select id="enable_xunlei">
+                    <option value="1">开启</option>
+                    <option value="0">关闭</option>
+                  </select>
+                </label>
+                <p class="field-hint span-2">关闭后前台不显示对应网盘入口，也无法搜索该类型。至少保留一个开启。</p>
+                <label class="field">站点名称<input id="app_name"/></label>
+                <label class="field span-2">副标题<input id="app_subname"/></label>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <dialog id="lineDlg" class="dlg">
+    <form method="dialog" id="lineForm" class="dlg-form">
+      <header class="dlg-head">
+        <div>
+          <h3 id="lineDlgTitle">新增线路</h3>
+          <p class="lead">选好网盘类型，一般只填名称和地址即可。转存目前主要支持夸克。</p>
+        </div>
+        <button type="button" class="btn icon" id="lineDlgClose" value="cancel" aria-label="关闭">×</button>
+      </header>
+      <input type="hidden" id="line_id"/>
+      <div class="form-grid dlg-body">
+        <label class="field span-2">名称<input id="line_name" required placeholder="例如：我的夸克源"/></label>
+        <label class="field span-2">请求地址<input id="line_url" required placeholder="支持 {keyword}，如 https://xxx/search?k={keyword}"/></label>
+        <label class="field">网盘类型
+          <select id="line_pantype">
+            <option value="0">夸克</option>
+            <option value="2">百度</option>
+            <option value="4">迅雷</option>
+          </select>
+        </label>
+        <label class="field">类型
+          <select id="line_type">
+            <option value="0">JSON 接口</option>
+            <option value="1">网页抓取</option>
+          </select>
+        </label>
+        <label class="field">条数<input id="line_count" type="number" value="10" min="1" max="30"/></label>
+        <label class="field">启用
+          <select id="line_status"><option value="1">启用</option><option value="0">停用</option></select>
+        </label>
+        <label class="field">权重<input id="line_weight" type="number" value="10"/></label>
+        <details class="span-2 adv-box">
+          <summary>高级参数（一般不用改）</summary>
+          <div class="form-grid" style="margin-top:12px">
+            <label class="field">Method
+              <select id="line_method"><option>GET</option><option>POST</option></select>
+            </label>
+            <label class="field span-2">fixed_params<textarea id="line_fixed" rows="2"></textarea></label>
+            <label class="field span-2">field_map<textarea id="line_map" rows="2"></textarea></label>
+          </div>
+        </details>
+      </div>
+      <footer class="dlg-foot">
+        <button type="submit" class="btn ghost" value="cancel">取消</button>
+        <button type="button" class="btn primary" id="lineSave" value="default">保存线路</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="folderDlg" class="dlg">
+    <div class="dlg-form">
+      <header class="dlg-head">
+        <div>
+          <h3 id="folderDlgTitle">选择文件夹</h3>
+          <p class="lead" id="folderDlgLead">点击文件夹进入下级；选好后设为转存或临时目录。</p>
+        </div>
+        <button type="button" class="btn icon" id="folderDlgClose" aria-label="关闭">×</button>
+      </header>
+      <div class="folder-toolbar">
+        <button type="button" class="btn ghost" id="folderUp">上级</button>
+        <button type="button" class="btn ghost" id="folderRoot">根目录</button>
+        <button type="button" class="btn ghost" id="folderRefresh">刷新</button>
+        <code id="folderPath" class="folder-path">/</code>
+      </div>
+      <div id="folderList" class="folder-list dlg-body"></div>
+      <footer class="dlg-foot folder-foot">
+        <div class="folder-current">
+          当前目录 FID：<code id="folderCurrentFid">0</code>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn ghost" id="pickAsTransfer">设为转存目录</button>
+          <button type="button" class="btn ghost" id="pickAsTemp">设为临时目录</button>
+          <button type="button" class="btn primary" id="pickCurrent" hidden>使用当前目录</button>
+        </div>
+      </footer>
+    </div>
+  </dialog>
+
+  <script src="/qfadmin/app.js"></script>
+  <script>
+    setTimeout(function () {
+      if (window.__adminReady) return;
+      var el = document.getElementById('loginError');
+      if (!el) return;
+      el.classList.add('show');
+      el.textContent = '后台脚本 /qfadmin/app.js 未加载，请硬刷新或检查部署静态资源。';
+    }, 1500);
+  </script>
+</body>
+</html>

@@ -299,8 +299,10 @@ adminRoutes.post('/source/update', async (c) => {
       )
       .run();
   }
-  const { markSearchIndexDirty } = await import('../services/search-index');
+  const { markSearchIndexDirty, rebuildSearchIndex } = await import('../services/search-index');
   await markSearchIndexDirty(c.env);
+  // 后台更新后尽快重建索引，避免前台长期读到旧 is_top
+  c.executionCtx.waitUntil(rebuildSearchIndex(c.env, true).then(() => undefined).catch(() => undefined));
   return c.json(jok('更新成功'));
 });
 
@@ -316,8 +318,10 @@ adminRoutes.post('/source/toggleTop', async (c) => {
   await c.env.DB.prepare('UPDATE source SET is_top = ?, update_time = ? WHERE source_id = ?')
     .bind(next, nowSec(), id)
     .run();
-  const { markSearchIndexDirty } = await import('../services/search-index');
+  const { markSearchIndexDirty, rebuildSearchIndex } = await import('../services/search-index');
   await markSearchIndexDirty(c.env);
+  // 置顶后立刻标脏并异步重建；脏期间前台走 D1，排序立即正确
+  c.executionCtx.waitUntil(rebuildSearchIndex(c.env, true).then(() => undefined).catch(() => undefined));
   return c.json(jok(next ? '已置顶' : '已取消置顶', { is_top: next }));
 });
 

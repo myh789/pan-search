@@ -48,11 +48,17 @@ function baiduHeaders(cookie: string): Record<string, string> {
   };
 }
 
+/** 百度 /share/verify 等接口的 surl：路径 /s/1xxx 需去掉开头的 1 */
 function extractSurl(linkUrl: string): string {
-  const m = linkUrl.match(/\/s\/([a-zA-Z0-9_-]+)/);
-  if (m) return m[1];
-  // legacy PHP: substr(url, 25, 23)
-  return linkUrl.slice(25, 48);
+  let s = '';
+  const q = String(linkUrl || '').match(/[?&]surl=([a-zA-Z0-9_-]+)/i);
+  if (q) s = q[1];
+  else {
+    const m = String(linkUrl || '').match(/\/s\/([a-zA-Z0-9_-]+)/);
+    s = m ? m[1] : String(linkUrl || '').slice(25, 48);
+  }
+  if (s.startsWith('1') && s.length > 1) s = s.slice(1);
+  return s;
 }
 
 function parseShareHtml(html: string): [string, string, string[], string[], string[]] | number {

@@ -1,0 +1,39 @@
+{
+  "name": "pan-search",
+  "nodeVersion": "20.18.0",
+  "installCommand": "npm install",
+  "buildCommand": "node -e \"console.log('[build] skip')\"",
+  "rewrites": [
+    { "source": "/qfadmin", "destination": "/qfadmin/index.html" },
+    { "source": "/qfadmin/", "destination": "/qfadmin/index.html" },
+    { "source": "/blob-init", "destination": "/api/blob-init" },
+    { "source": "/blob-init/", "destination": "/api/blob-init" }
+  ],
+  "headers": [
+    {
+      "source": "/*",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ],
+  "cloudFunctions": {
+    "mainlandRegions": ["ap-guangzhou"],
+    "nodejs": {
+      "maxDuration": 120,
+      "includeFiles": ["lib/**"],
+      "externalNodeModules": ["@edgeone/pages-blob"]
+    }
+  },
+  "schedules": [
+    {
+      "name": "temp-source-cleanup",
+      "cron": "0 3 * * *",
+      "path": "/cron/cleanup",
+      "method": "POST",
+      "timezone": "Asia/Shanghai",
+      "payload": { "source": "schedule" }
+    }
+  ]
+}

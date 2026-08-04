@@ -193,6 +193,7 @@ ${conf.home_css || ''}
 .modal-mask.show { display:flex; }
 .toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.78); color:#fff; padding:8px 16px; border-radius:8px; z-index:1000; display:none; }
 .listBox .left .list .item .btns .btn .icon { width:16px; height:16px; margin-right:4px; vertical-align:middle; }
+.listBox .left .list .item .title .tag-top { display:inline-block; margin-right:6px; padding:0 5px; font-size:12px; line-height:18px; color:#fff; background:#e6a23c; border-radius:3px; vertical-align:middle; font-weight:600; }
 .details .cat .r .icon { width:18px; height:18px; margin-right:6px; vertical-align:middle; }
 </style>
 ${conf.seo_statistics || ''}
@@ -621,10 +622,9 @@ export async function renderList(
       .map((it: any, key: number) => {
         const t = Number(it.is_type || 0);
         return `<div class="item">
-          <a href="javascript:;" onclick="linkBtn(this)" data-index="${key}" class="title">${highlightTitle(
-            it.title,
-            name
-          )}</a>
+          <a href="javascript:;" onclick="linkBtn(this)" data-index="${key}" class="title">${
+            Number(it.is_top) ? '<span class="tag-top" title="置顶">顶</span>' : ''
+          }${highlightTitle(it.title, name)}</a>
           <div class="type time">${esc(it.times || '')}</div>
           <div class="type"><span>来源：${esc(panFullName(t))}</span>${
             it.code ? `<span>提取码：<span>${esc(it.code)}</span></span>` : ''
